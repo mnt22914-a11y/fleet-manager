@@ -24,6 +24,7 @@ const DIM = {
   front: 1.6975, rear: -1.6975,
   wheelF: 1.6975 - 0.55, wheelR: -1.6975 + 0.395,
   tireR: 0.268, rimR: 0.152, tireW: 0.145,
+  tread: 1.31, clearance: 0.165,
   floor: 0.26, belt: 1.16, winTop: 1.68,
   arch: 0.33,
   bevel: 0.06,
@@ -190,10 +191,18 @@ function buildVan() {
   g.add(body);
 
   // 下回り・シャシー(アーチの向こうが見えないように)
-  const under = mesh(new THREE.BoxGeometry(W - 0.16, 0.2, Math.abs(front - rear) - 0.3), MAT.dark(), 'underbody');
-  under.position.set(0, floor + 0.04, (front + rear) / 2); g.add(under);
-  const tank = mesh(new THREE.BoxGeometry(0.55, 0.14, 0.5), MAT.grey(), 'underbody');
-  tank.position.set(0.05, 0.21, -0.55); g.add(tank);
+  const under = mesh(new THREE.BoxGeometry(W - 0.16, floor + 0.04 - DIM.clearance, Math.abs(front - rear) - 0.3), MAT.dark(), 'underbody');
+  under.position.set(0, (floor + 0.04 + DIM.clearance) / 2, (front + rear) / 2); g.add(under);
+  const tank = mesh(new THREE.BoxGeometry(0.55, 0.12, 0.5), MAT.grey(), 'underbody');
+  tank.position.set(0.05, DIM.clearance + 0.07, -0.55); g.add(tank);
+  // リアアクスル・デフ・リーフスプリング(背面図の下回り)
+  const axle = mesh(new THREE.CylinderGeometry(0.035, 0.035, DIM.tread - 0.1, 12), MAT.grey(), 'underbody');
+  axle.rotation.z = Math.PI / 2; axle.position.set(0, DIM.tireR, wheelR); g.add(axle);
+  const diff = mesh(new THREE.SphereGeometry(0.11, 16, 12), MAT.grey(), 'underbody'); diff.position.set(0.05, DIM.tireR, wheelR); g.add(diff);
+  for (const sx of [-1, 1]) {
+    const leaf = mesh(new THREE.BoxGeometry(0.06, 0.02, 1.0), MAT.dark(), 'underbody'); leaf.position.set(sx * 0.55, DIM.tireR + 0.05, wheelR); g.add(leaf);
+    const shackle = mesh(new THREE.BoxGeometry(0.04, 0.10, 0.04), MAT.dark(), 'underbody'); shackle.position.set(sx * 0.55, DIM.tireR + 0.10, wheelR + 0.48); g.add(shackle);
+  }
   const muffler = mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 14), MAT.grey(), 'underbody');
   muffler.rotation.x = Math.PI / 2; muffler.position.set(0.40, 0.19, rear + 0.40); g.add(muffler);
   const tip = mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.1, 10), MAT.chrome(), 'underbody');
@@ -225,11 +234,14 @@ function buildVan() {
     // スライドドアのレール(窓下の溝)
     g.add(sidePanel([[doorC, belt - 0.07], [doorB, belt - 0.07], [doorB, belt - 0.05], [doorC, belt - 0.05]], side, MAT.trim(), partSide, 0.012));
     // キャラクターライン(窓下 0.87m を前後に走る)と、ドア下のサイドシル
-    g.add(sidePanel([[rear + 0.12, 0.865], [1.12, 0.865], [1.12, 0.88], [rear + 0.12, 0.88]], side, MAT.paintDim(), 'cargo', 0.009));
+    g.add(sidePanel([[rear + 0.12, 0.862], [1.30, 0.862], [1.30, 0.878], [rear + 0.12, 0.878]], side, MAT.paint(), 'cargo', 0.004, 0.008));
+    g.add(sidePanel([[1.30, 0.862], [hoodFront[0] - 0.03, 0.772], [hoodFront[0] - 0.03, 0.788], [1.30, 0.878]], side, MAT.paint(), 'hood', 0.004, 0.008));
+    // スライドドアのレールカバー(リアクォーター上部の帯)
+    g.add(sidePanel([[rear + 0.10, 0.80], [doorC - 0.02, 0.80], [doorC - 0.02, 0.86], [rear + 0.10, 0.86]], side, MAT.bumper(), 'cargo', 0.006, 0.012));
     g.add(sidePanel([[doorC, floor + 0.03], [wheelF - arch - 0.03, floor + 0.03], [wheelF - arch - 0.03, doorBottom - 0.005], [doorC, doorBottom - 0.005]], side, MAT.bumper(), partSide, 0.005));
     // ホイールアーチのモールと泥よけ
     for (const wz of [wheelF, wheelR]) {
-      g.add(sidePanel([...arcPts(wz, floor, arch + 0.015, 180, 0, 14), ...arcPts(wz, floor, arch + 0.05, 0, 180, 14)], side, MAT.bumper(), wz > 0 ? 'cabin' : 'cargo', 0.010));
+      g.add(sidePanel([...arcPts(wz, floor, arch + 0.015, 180, 0, 16), ...arcPts(wz, floor, arch + 0.06, 0, 180, 16)], side, MAT.bumper(), wz > 0 ? 'cabin' : 'cargo', 0.004, 0.022));
       const flap = mesh(new THREE.BoxGeometry(0.015, 0.15, 0.10), MAT.trim(), 'underbody');
       flap.position.set(side * (half - 0.09), floor + 0.075, wz - arch - 0.02); g.add(flap);
     }
@@ -237,7 +249,7 @@ function buildVan() {
     const h1 = mesh(new THREE.BoxGeometry(0.02, 0.035, 0.15), MAT.trim(), 'cabin'); h1.position.set(side * (half + 0.02), belt - 0.11, doorB + 0.22); g.add(h1);
     const h2 = mesh(new THREE.BoxGeometry(0.03, 0.14, 0.045), MAT.trim(), partSide); h2.position.set(side * (half + 0.025), belt - 0.12, doorB - 0.09); g.add(h2);
     // 給油口(左のみ)
-    if (side < 0) g.add(sidePanel([[-1.36, 0.95], [-1.22, 0.95], [-1.22, 1.08], [-1.36, 1.08]], side, MAT.paintDim(), 'cargo', 0.008));
+    if (side > 0) g.add(sidePanel([[-1.36, 0.95], [-1.22, 0.95], [-1.22, 1.08], [-1.36, 1.08]], side, MAT.paintDim(), 'cargo', 0.008));
     // ドアミラー(前ドアの前上に取り付け、ウインカー付き)
     const mirrorPart = side < 0 ? 'mirror_l' : 'mirror_r';
     const mz = doorFront - 0.12;
@@ -289,17 +301,21 @@ function buildVan() {
     const ring = mesh(new THREE.TorusGeometry(0.055, 0.008, 8, 24), MAT.chrome(), 'lights'); ring.position.set(sgn * 0.56, 0.03, 0.028); lf.add(ring);
     const proj = mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 20), MAT.trim(), 'lights'); proj.rotation.x = Math.PI / 2; proj.position.set(sgn * 0.56, 0.03, 0.024); lf.add(proj);
     lf.add(facePanel(0.12, 0.05, 0.015, MAT.amber(), 'lights', sgn * 0.43, -0.05, 0.028));
+    lf.add(facePanel(0.20, 0.018, 0.005, MAT.lamp(), 'lights', sgn * 0.46, 0.085, 0.028));   // LED ポジションのバー
+    lf.add(facePanel(0.36, 0.23, 0.02, MAT.trim(), 'lights', sgn * 0.52, 0.0, 0.003));       // ユニットの黒い枠
   }
   const emblem = mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.012, 24), MAT.chrome(), 'hood');
   emblem.rotation.x = Math.PI / 2; emblem.position.set(0, 0.03, 0.012); lf.add(emblem);
-  lf.add(facePanel(0.56, 0.05, 0.015, MAT.trim(), 'hood', 0, -0.09, 0.008)); // ライト間のグリルスリット
+  lf.add(facePanel(0.60, 0.06, 0.015, MAT.trim(), 'hood', 0, -0.09, 0.008)); // ライト間の上段グリル
+  for (const dy of [-0.108, -0.09, -0.072]) lf.add(facePanel(0.56, 0.005, 0.002, MAT.grey(), 'hood', 0, dy, 0.010));
 
   // ---- 前バンパー(縦の面 z=front): 中央の大きな開口と横バー、フォグ、下中央にナンバー ----
   const fz = front + 0.002;
   const bH = bumperTop - 0.02 - (floor - 0.02), bY = (bumperTop - 0.02 + floor - 0.02) / 2;
   g.add(facePanel(W - 0.02, bH, 0.07, MAT.bumper(), 'front_bumper', 0, bY, fz + 0.004, 1, 0.035));
-  g.add(facePanel(0.76, 0.19, 0.03, MAT.trim(), 'front_bumper', 0, 0.53, fz + 0.041));
-  for (const y of [0.485, 0.535, 0.585]) g.add(facePanel(0.72, 0.018, 0.005, MAT.bumper(), 'front_bumper', 0, y, fz + 0.043));
+  g.add(facePanel(0.78, 0.20, 0.03, MAT.trim(), 'front_bumper', 0, 0.53, fz + 0.041));
+  for (const y of [0.47, 0.51, 0.55, 0.59]) g.add(facePanel(0.74, 0.014, 0.004, MAT.bumper(), 'front_bumper', 0, y, fz + 0.043));
+  for (const x of [-0.30, -0.15, 0, 0.15, 0.30]) g.add(facePanel(0.012, 0.18, 0.003, MAT.grey(), 'front_bumper', x, 0.53, fz + 0.044));
   g.add(facePanel(0.64, 0.045, 0.015, MAT.trim(), 'front_bumper', 0, bumperTop - 0.05, fz + 0.041)); // 上のグリル
   g.add(facePanel(0.33, 0.165, 0.01, MAT.plate(), 'front_bumper', 0, 0.345, fz + 0.046));
   for (const sgn of [-1, 1]) {
@@ -322,8 +338,10 @@ function buildVan() {
   g.add(facePanel(0.33, 0.165, 0.01, MAT.plate(), 'rear', 0, 0.745, rz - 0.014, -1));
   g.add(facePanel(W - 0.02, 0.22, 0.05, MAT.bumper(), 'rear', 0, 0.435, rz - 0.004, -1, 0.035));  // 後バンパー
   for (const sgn of [-1, 1]) {                                                                   // バンパー両端の横長ランプ
-    g.add(facePanel(0.26, 0.12, 0.02, MAT.tail(), 'lights', sgn * 0.56, 0.435, rz - 0.041, -1, 0.01));
-    g.add(facePanel(0.08, 0.09, 0.01, MAT.lamp(), 'lights', sgn * 0.48, 0.435, rz - 0.053, -1));
+    g.add(facePanel(0.28, 0.13, 0.02, MAT.trim(), 'lights', sgn * 0.56, 0.435, rz - 0.040, -1, 0.006));   // ユニットの枠
+    g.add(facePanel(0.10, 0.10, 0.01, MAT.tail(), 'lights', sgn * 0.64, 0.435, rz - 0.050, -1));          // ブレーキ
+    g.add(facePanel(0.07, 0.10, 0.01, MAT.amber(), 'lights', sgn * 0.55, 0.435, rz - 0.050, -1));         // ウインカー
+    g.add(facePanel(0.07, 0.10, 0.01, MAT.lamp(), 'lights', sgn * 0.475, 0.435, rz - 0.050, -1));         // バックランプ
     g.add(facePanel(0.015, 0.50, 0.005, MAT.trim(), 'rear', sgn * 0.645, 0.95, rz - 0.006, -1)); // バックドアの縁
   }
 
@@ -337,12 +355,12 @@ function buildVan() {
     const rail = mesh(new THREE.BoxGeometry(0.014, 0.014, 2.3), MAT.trim(), 'cargo');
     rail.position.set(sgn * (half - 0.05), roofY - 0.004, -0.55); g.add(rail);
   }
-  const antBase = mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.03, 10), MAT.trim(), 'cabin'); antBase.position.set(-0.45, roofY + 0.015, 0.40); g.add(antBase);
+  const antBase = mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.03, 10), MAT.trim(), 'cabin'); antBase.position.set(-0.30, roofY + 0.015, 0.15); g.add(antBase);
   const antenna = mesh(new THREE.CylinderGeometry(0.004, 0.006, 0.34, 8), MAT.trim(), 'cabin');
-  antenna.position.set(-0.45, roofY + 0.14, 0.29); antenna.rotation.x = 0.7; g.add(antenna);
+  antenna.position.set(-0.30, roofY + 0.14, 0.04); antenna.rotation.x = 0.7; g.add(antenna);
 
   // ---- タイヤ ----
-  const wx = half - DIM.tireW / 2 - 0.03;
+  const wx = DIM.tread / 2;
   g.add(wheel('wheel_fl', -wx, wheelF), wheel('wheel_fr', wx, wheelF));
   g.add(wheel('wheel_rl', -wx, wheelR), wheel('wheel_rr', wx, wheelR));
 
