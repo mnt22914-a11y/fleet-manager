@@ -33,7 +33,8 @@ css/style.css         見た目(PC 優先、スマホは下タブ)
 js/logic.js           期限判定・集計・検証・CSV などの純粋関数(テスト対象)
 js/store.js           保存層。いまは localStorage。将来 Supabase に差し替える想定
 js/sample.js          固定シードのサンプルデータ
-js/van3d.js           Three.js(CDN, r128)でスズキ エブリイ バン(DA17V の寸法)を組み立て、回転・タップ選択・赤表示をする
+js/van3d.js           Three.js(CDN, r128)でスズキ エブリイ バン(三面図の寸法)を組み立て、回転・タップ選択・赤表示をする。models/van.glb があれば実車モデルに切り替わる
+models/               実車の GLB を置く場所(models/README.md 参照)
 js/photos.js          写真の縮小と IndexedDB 保存。起動時に読み込み、url(id) で参照
 js/app.js             画面の描画とイベント(ハッシュルーティング、<dialog> フォーム)
 sw.js                 オフライン用の最小キャッシュ

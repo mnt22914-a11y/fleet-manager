@@ -45,7 +45,7 @@ function getRenderer() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.95;
   renderer.domElement.style.touchAction = 'none';
   renderer.domElement.style.display = 'block';
   renderer.domElement.style.cursor = 'grab';
@@ -54,14 +54,14 @@ function getRenderer() {
 
 // ---- 材質 ----
 const MAT = {
-  paint: () => new THREE.MeshPhysicalMaterial({ color: COLORS.paint, roughness: 0.32, metalness: 0.0, clearcoat: 1, clearcoatRoughness: 0.08 }),
+  paint: () => new THREE.MeshPhysicalMaterial({ color: COLORS.paint, roughness: 0.3, metalness: 0.0, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 0.9 }),
   paintDim: () => new THREE.MeshPhysicalMaterial({ color: 0xe4e8ec, roughness: 0.4, clearcoat: 0.8, clearcoatRoughness: 0.15 }),
-  bumper: () => new THREE.MeshPhysicalMaterial({ color: COLORS.bumper, roughness: 0.5, metalness: 0.0, clearcoat: 0.4, clearcoatRoughness: 0.3 }),
-  glass: () => new THREE.MeshPhysicalMaterial({ color: COLORS.glass, roughness: 0.06, metalness: 0.15, transparent: true, opacity: 0.8, clearcoat: 1 }),
-  trim: () => new THREE.MeshStandardMaterial({ color: 0x15181c, roughness: 0.7 }),
+  bumper: () => new THREE.MeshPhysicalMaterial({ color: COLORS.bumper, roughness: 0.5, metalness: 0.0, clearcoat: 0.4, clearcoatRoughness: 0.3, envMapIntensity: 0.6 }),
+  glass: () => new THREE.MeshPhysicalMaterial({ color: 0x3f5f7c, roughness: 0.05, metalness: 0.05, transparent: true, opacity: 0.82, clearcoat: 1, envMapIntensity: 1.0 }),
+  trim: () => new THREE.MeshStandardMaterial({ color: 0x15181c, roughness: 0.7, envMapIntensity: 0.4 }),
   dark: () => new THREE.MeshStandardMaterial({ color: COLORS.dark, roughness: 0.85, metalness: 0.05 }),
   grey: () => new THREE.MeshStandardMaterial({ color: 0x8e969e, roughness: 0.7 }),
-  tire: () => new THREE.MeshStandardMaterial({ color: 0x1a1d20, roughness: 0.95 }),
+  tire: () => new THREE.MeshStandardMaterial({ color: 0x1a1d20, roughness: 0.95, envMapIntensity: 0.3 }),
   rim: () => new THREE.MeshStandardMaterial({ color: COLORS.rim, roughness: 0.35, metalness: 0.7 }),
   chrome: () => new THREE.MeshStandardMaterial({ color: COLORS.chrome, roughness: 0.2, metalness: 0.9 }),
   lamp: () => new THREE.MeshPhysicalMaterial({ color: COLORS.lamp, roughness: 0.1, metalness: 0.3, emissive: 0x334455, emissiveIntensity: 0.25, clearcoat: 1 }),
@@ -184,7 +184,7 @@ function buildVan() {
   const half = W / 2;
 
   // 車体本体: 側面シルエットを幅方向に押し出し、角を丸める
-  const body = mesh(new THREE.ExtrudeGeometry(sideProfile(), { depth: W - bevel * 2, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 5, curveSegments: 18 }), MAT.paint(), null);
+  const body = mesh(smoothGeometry(new THREE.ExtrudeGeometry(sideProfile(), { depth: W - bevel * 2, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 7, curveSegments: 24 })), MAT.paint(), null);
   body.rotation.y = -Math.PI / 2;            // 押し出し方向(+z) → -x
   body.position.x = half - bevel;
   g.add(body);
@@ -351,6 +351,130 @@ function buildVan() {
   return g;
 }
 
+// ---- 環境の映り込み(スタジオ風のライトボックスを PMREM にする) ----
+let envMap = null;
+function getEnvironment(r) {
+  if (envMap) return envMap;
+  const pmrem = new THREE.PMREMGenerator(r);
+  const sc = new THREE.Scene();
+  sc.add(new THREE.Mesh(new THREE.SphereGeometry(60, 32, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.36, 0.40, 0.46), side: THREE.BackSide })));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.14, 0.15, 0.17) }));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = -0.02; sc.add(floor);
+  const soft = (w, h, x, y, z, b) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(b, b, b), side: THREE.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 1, 0); sc.add(m); };
+  soft(10, 4, 0, 9, 0, 1.6);     // 真上の大きなライト
+  soft(6, 5, -9, 4, 5, 1.2);     // 左前
+  soft(6, 5, 9, 4, -3, 0.9);     // 右後ろ
+  soft(5, 3, 2, 3, -10, 0.7);    // 後ろ
+  envMap = pmrem.fromScene(sc, 0.05).texture;
+  pmrem.dispose();
+  return envMap;
+}
+
+/** 重なった頂点をまとめて法線を平均し、押し出しの角を滑らかに見せる。 */
+function smoothGeometry(geo, tol = 1e-4) {
+  const pos = geo.attributes.position;
+  const map = new Map(), index = [], verts = [];
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const key = `${Math.round(x / tol)}_${Math.round(y / tol)}_${Math.round(z / tol)}`;
+    let id = map.get(key);
+    if (id === undefined) { id = verts.length / 3; map.set(key, id); verts.push(x, y, z); }
+    index.push(id);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  return g;
+}
+
+// ---- 部位の範囲(車両座標 m)。GLB モデルのハイライトと、車体に描けない部位(電装など)の表示に使う ----
+const REGIONS = {
+  front_bumper: [[-0.74, 0.22, 1.44, 0.74, 0.76, 1.76]],
+  hood: [[-0.72, 0.76, 1.16, 0.72, 1.22, 1.72]],
+  windshield: [[-0.70, 1.12, 0.78, 0.70, 1.78, 1.26]],
+  cabin: [[-0.78, 0.40, 0.08, 0.78, 1.92, 1.06]],
+  cargo: [[-0.78, 0.40, -1.66, 0.78, 1.92, -0.86]],
+  side_l: [[-0.82, 0.40, -0.86, -0.68, 1.78, 0.08]],
+  side_r: [[0.68, 0.40, -0.86, 0.82, 1.78, 0.08]],
+  rear: [[-0.74, 0.22, -1.80, 0.74, 1.84, -1.62]],
+  mirror_l: [[-0.92, 1.08, 0.78, -0.72, 1.42, 1.02]],
+  mirror_r: [[0.72, 1.08, 0.78, 0.92, 1.42, 1.02]],
+  wheel_fl: [[-0.80, 0.0, DIM.wheelF - 0.30, -0.50, 0.58, DIM.wheelF + 0.30]],
+  wheel_fr: [[0.50, 0.0, DIM.wheelF - 0.30, 0.80, 0.58, DIM.wheelF + 0.30]],
+  wheel_rl: [[-0.80, 0.0, DIM.wheelR - 0.30, -0.50, 0.58, DIM.wheelR + 0.30]],
+  wheel_rr: [[0.50, 0.0, DIM.wheelR - 0.30, 0.80, 0.58, DIM.wheelR + 0.30]],
+  lights: [[-0.74, 0.76, 1.50, -0.30, 1.06, 1.76], [0.30, 0.76, 1.50, 0.74, 1.06, 1.76], [-0.72, 0.34, -1.80, -0.40, 0.54, -1.62], [0.40, 0.34, -1.80, 0.72, 0.54, -1.62]],
+  battery: [[-0.60, 0.30, -0.35, 0.10, 0.70, 0.35]],
+  underbody: [[-0.62, 0.08, -1.40, 0.62, 0.30, 1.10]],
+  other: [[-0.40, 0.90, -0.50, 0.40, 1.30, 0.30]],
+};
+const XRAY_PARTS = new Set(['battery', 'underbody', 'other']);   // 車体の中なので透けて見せる
+
+/** 範囲ボックスのハイライト(半透明の赤 / 選択は青い縁取り)。 */
+function regionHighlights(part, kind, severity) {
+  const out = [];
+  for (const [x0, y0, z0, x1, y1, z1] of REGIONS[part] || []) {
+    const geo = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
+    const center = [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2];
+    if (kind === 'issue') {
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: COLORS.issue, transparent: true, opacity: 0.35, depthTest: !XRAY_PARTS.has(part), depthWrite: false }));
+      m.position.set(...center); m.userData.severity = severity; m.userData.highlight = true; m.renderOrder = 10;
+      out.push(m);
+    }
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: kind === 'issue' ? COLORS.issue : COLORS.selected, depthTest: !XRAY_PARTS.has(part) }));
+    edges.position.set(...center); edges.renderOrder = 11;
+    out.push(edges);
+  }
+  return out;
+}
+
+// ---- 実車の GLB モデル(models/van.glb)があればそれを使う ----
+const GLB_URL = 'models/van.glb', GLB_CFG = 'models/van.json';
+let glbCache = null; // null=未確認 / false=なし / { scene, cfg }
+async function loadGLB() {
+  if (glbCache !== null) return glbCache;
+  try {
+    if (!THREE.GLTFLoader) throw new Error('no loader');
+    const head = await fetch(GLB_URL, { method: 'HEAD' });
+    if (!head.ok) throw new Error('no glb');
+    let cfg = {};
+    try { const c = await fetch(GLB_CFG); if (c.ok) cfg = await c.json(); } catch { /* 設定なしでもよい */ }
+    const gltf = await new Promise((res, rej) => new THREE.GLTFLoader().load(GLB_URL, res, undefined, rej));
+    glbCache = { scene: gltf.scene, cfg };
+  } catch {
+    glbCache = false;
+  }
+  return glbCache;
+}
+
+/** GLB を車両座標(前 +z、全長 3.395m、床 y=0)に合わせる。van.json で { rotationY: 度, front: "+z"|"-z", scale: 倍率 } を指定できる。 */
+function buildFromGLB({ scene, cfg }) {
+  const g = new THREE.Group();
+  const model = scene.clone(true);
+  model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.userData.part = null; if (o.material) { o.material = o.material.clone(); o.material.side = THREE.DoubleSide; } } });
+  const inner = new THREE.Group();
+  inner.add(model);
+  if (cfg.rotationY != null) inner.rotation.y = (cfg.rotationY * Math.PI) / 180;
+  else {
+    const b0 = new THREE.Box3().setFromObject(model); const s0 = b0.getSize(new THREE.Vector3());
+    if (s0.x > s0.z) inner.rotation.y = Math.PI / 2;   // 長手方向を z に
+  }
+  if (cfg.front === '-z') inner.rotation.y += Math.PI;
+  g.add(inner);
+  const box = new THREE.Box3().setFromObject(g);
+  const size = box.getSize(new THREE.Vector3());
+  const k = (cfg.scale || 1) * (DIM.L / Math.max(size.z, 1e-6));
+  g.scale.setScalar(k);
+  const box2 = new THREE.Box3().setFromObject(g);
+  const c = box2.getCenter(new THREE.Vector3());
+  g.position.set(-c.x, -box2.min.y, -c.z);
+  const holder = new THREE.Group();
+  holder.add(g);
+  holder.userData.isGLB = true;
+  return holder;
+}
+
 /** 車体本体(part=null)に当たったとき、位置から部位を決める。 */
 function partFromPoint(p) {
   const { front, rear, W, wsBase, doorB, doorC, bumperTop } = DIM;
@@ -376,13 +500,14 @@ export function mountVan3D(container, { status = {}, selected = '', onSelect } =
   container.appendChild(r.domElement);
 
   const scene = new THREE.Scene();
+  scene.environment = getEnvironment(r);
   const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
   const target = new THREE.Vector3(0, 0.95, 0);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa5b1, 0.75));
-  const fill = new THREE.DirectionalLight(0xdce8ff, 0.35); fill.position.set(-4, 3, -3); scene.add(fill);
-  const rim = new THREE.DirectionalLight(0xffffff, 0.3); rim.position.set(0, 5, -6); scene.add(rim);
-  const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa5b1, 0.35));
+  const fill = new THREE.DirectionalLight(0xdce8ff, 0.2); fill.position.set(-4, 3, -3); scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.2); rim.position.set(0, 5, -6); scene.add(rim);
+  const sun = new THREE.DirectionalLight(0xffffff, 0.8);
   sun.position.set(3, 6, 4);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -397,32 +522,42 @@ export function mountVan3D(container, { status = {}, selected = '', onSelect } =
   disc.rotation.x = -Math.PI / 2; disc.position.y = 0.001;
   scene.add(disc);
 
-  const van = buildVan();
-  scene.add(van);
-  const meshes = [];
-  van.traverse((o) => { if (o.isMesh) meshes.push(o); });
-  const parts = meshes.filter((m) => m.userData.part);
-
-  // 異常のある部位は赤、選択中は青い縁取り
+  // 車体は GLB があればそれ、なければ手作りモデル。GLB の読み込みは非同期なので、できてから差し込む
+  let van = null;
+  let meshes = [];
   const issueMeshes = [];
-  const outlines = [];
-  for (const m of parts) {
-    const st = status[m.userData.part];
-    if (st) {
-      m.material = m.material.clone();
-      m.material.color.setHex(COLORS.issue);
-      m.material.emissive = new THREE.Color(COLORS.issueEmissive);
-      m.material.emissiveIntensity = 0.35;
-      m.userData.severity = st.severity;
-      issueMeshes.push(m);
+  const highlights = [];
+  let alive = true;
+  function setupVan(built) {
+    if (!alive) return;
+    van = built;
+    scene.add(van);
+    van.traverse((o) => { if (o.isMesh && !o.userData.highlight) meshes.push(o); });
+    const isGLB = Boolean(van.userData.isGLB);
+    const partIds = new Set(meshes.map((m) => m.userData.part).filter(Boolean));
+    // 異常のある部位は赤、選択中は青い縁取り(メッシュがある部位は色を変え、ない部位は範囲ボックスで示す)
+    for (const m of meshes) {
+      const st = status[m.userData.part];
+      if (st) {
+        m.material = m.material.clone();
+        m.material.color.setHex(COLORS.issue);
+        if ('emissive' in m.material) { m.material.emissive = new THREE.Color(COLORS.issueEmissive); m.material.emissiveIntensity = 0.35; }
+        m.userData.severity = st.severity;
+        issueMeshes.push(m);
+      }
+      if (selected && m.userData.part === selected) {
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 25), new THREE.LineBasicMaterial({ color: COLORS.selected }));
+        edges.position.copy(m.position); edges.rotation.copy(m.rotation); edges.scale.copy(m.scale).multiplyScalar(1.01);
+        m.parent.add(edges); highlights.push(edges);
+        if (!st && 'emissive' in m.material) { m.material = m.material.clone(); m.material.emissive = new THREE.Color(COLORS.selected); m.material.emissiveIntensity = 0.22; }
+      }
     }
-    if (selected && m.userData.part === selected) {
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 25), new THREE.LineBasicMaterial({ color: COLORS.selected }));
-      edges.position.copy(m.position); edges.rotation.copy(m.rotation); edges.scale.copy(m.scale).multiplyScalar(1.01);
-      m.parent.add(edges); outlines.push(edges);
-      if (!st) { m.material = m.material.clone(); m.material.emissive = new THREE.Color(COLORS.selected); m.material.emissiveIntensity = 0.22; }
+    for (const [part, st] of Object.entries(status)) {
+      if (isGLB || !partIds.has(part)) for (const h of regionHighlights(part, 'issue', st.severity)) { van.add(h); highlights.push(h); }
     }
+    if (selected && (isGLB || !partIds.has(selected))) for (const h of regionHighlights(selected, 'select')) { van.add(h); highlights.push(h); }
   }
+  loadGLB().then((glb) => setupVan(glb ? buildFromGLB(glb) : buildVan()));
 
   // ---- 操作 ----
   const el = r.domElement;
@@ -435,6 +570,7 @@ export function mountVan3D(container, { status = {}, selected = '', onSelect } =
     const rect = el.getBoundingClientRect();
     ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
+    if (!van) return null;
     const hit = raycaster.intersectObjects(meshes, false)[0];
     if (!hit) return null;
     if (hit.object.userData.part) return hit.object;
@@ -512,7 +648,7 @@ export function mountVan3D(container, { status = {}, selected = '', onSelect } =
   resize();
 
   // ---- 描画ループ ----
-  let raf = 0, alive = true;
+  let raf = 0;
   const t0 = performance.now();
   function frame(now) {
     if (!alive) return;
@@ -527,7 +663,10 @@ export function mountVan3D(container, { status = {}, selected = '', onSelect } =
     const t = (now - t0) / 1000;
     for (const m of issueMeshes) {
       const speed = m.userData.severity === 'high' ? 4 : 2.2;
-      m.material.emissiveIntensity = 0.3 + 0.35 * (0.5 + 0.5 * Math.sin(t * speed));
+      if ('emissiveIntensity' in m.material) m.material.emissiveIntensity = 0.3 + 0.35 * (0.5 + 0.5 * Math.sin(t * speed));
+    }
+    for (const h of highlights) {
+      if (h.userData.highlight) h.material.opacity = 0.22 + 0.22 * (0.5 + 0.5 * Math.sin(t * (h.userData.severity === 'high' ? 4 : 2.2)));
     }
     r.render(scene, camera);
   }
