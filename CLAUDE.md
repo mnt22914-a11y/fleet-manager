@@ -12,6 +12,10 @@
 - 3D は Three.js r128(cdnjs)+ GLTFLoader(jsdelivr)を index.html で読み、js/van3d.js で組み立てる。window.THREE が無ければ 2D 図に落ちる。models/van.glb があれば GLB を使い、部位は REGIONS(範囲ボックス)で示す
 - 写真は js/photos.js(IndexedDB)。localStorage には ID だけ入れる
 
+## 続きを始めるとき
+- まず docs/進捗.md を読む(いまの状態、やりかけの作業、次の候補)
+- 3D モデルの基準は reference/(三面図 4 枚と 3d-spec.md)
+
 ## 確認の仕方
 - `python3 -m http.server 8080` で開き、設定 → サンプルデータを入れて全画面を目で見る
 - `node --test tests/*.test.mjs` が通ること
