@@ -10,7 +10,7 @@ const $toast = document.getElementById('toast');
 
 // 画面ごとの UI 状態(フィルタや並び順)。保存はしない。
 const ui = {
-  vehicles: { q: '', base: '', status: '', onlyAlert: false, sortKey: 'code', sortDir: 'asc' },
+  vehicles: { q: '', base: '', status: '', onlyAlert: false, sortKey: 'code', sortDir: 'asc', view: 'lot' },
   maintenance: { q: '', ym: '', vehicleId: '', type: '' },
   detail: { part: '' },
 };
@@ -206,6 +206,12 @@ function renderVehicles(state, today) {
   let rows = u.onlyAlert ? withLevel.filter((v) => v._level !== 'ok') : withLevel;
   rows = L.sortBy(rows, u.sortKey === '_level' ? '_levelOrder' : u.sortKey, u.sortDir);
 
+  const alertsByVehicle = new Map();
+  for (const a of L.allAlerts(rows, records, settings, today)) {
+    const cur = alertsByVehicle.get(a.vehicleId) || [];
+    cur.push(a);
+    alertsByVehicle.set(a.vehicleId, cur);
+  }
   const th = (key, label, cls = '') => {
     const active = u.sortKey === key;
     return `<th class="sortable ${cls}" data-action="sort" data-key="${key}">${label}<span class="sort-ind">${active ? (u.sortDir === 'asc' ? '▲' : '▼') : ''}</span></th>`;
@@ -231,8 +237,12 @@ function renderVehicles(state, today) {
         <label class="inline-check"><input type="checkbox" data-filter="vehicles.onlyAlert" ${u.onlyAlert ? 'checked' : ''}>アラートのある車両だけ</label>
         <span class="spacer"></span>
         <span class="count">${rows.length} 台を表示</span>
+        <div class="seg view-seg">
+          <button type="button" class="seg-btn ${u.view === 'lot' ? 'on' : ''}" data-action="set-view" data-view="lot" title="駐車場">駐車場</button>
+          <button type="button" class="seg-btn ${u.view === 'table' ? 'on' : ''}" data-action="set-view" data-view="table" title="一覧表">一覧表</button>
+        </div>
       </div>
-      ${rows.length === 0 ? `<div class="empty"><strong>該当する車両がありません</strong>${vehicles.length === 0 ? '「＋ 車両を追加」から登録してください。' : '検索条件を変えてみてください。'}</div>` : `
+      ${rows.length === 0 ? `<div class="empty"><strong>該当する車両がありません</strong>${vehicles.length === 0 ? '「＋ 車両を追加」から登録してください。' : '検索条件を変えてみてください。'}</div>` : u.view === 'lot' ? renderLot(rows, issueStatus, alertsByVehicle, settings) : `
       <div class="table-wrap"><table>
         <thead><tr>
           ${th('code', '管理番号 / 車両名')}
@@ -264,6 +274,65 @@ function renderVehicles(state, today) {
         </tbody>
       </table></div>`}
     </div>`;
+}
+
+// ---- 駐車場ビュー ----
+
+/** 小さな軽バン(上面図)。status と level で色を変える。 */
+function miniVan(v, level) {
+  const cls = `van st-${v.status} level-${level}`;
+  return `<svg class="${cls}" viewBox="0 0 64 120" aria-hidden="true">
+    <path class="van-body" d="M 14 2 H 50 Q 62 2 62 14 V 108 Q 62 118 52 118 H 12 Q 2 118 2 108 V 14 Q 2 2 14 2 Z"/>
+    <rect class="van-wheel" x="-2" y="22" width="8" height="18" rx="3"/><rect class="van-wheel" x="58" y="22" width="8" height="18" rx="3"/>
+    <rect class="van-wheel" x="-2" y="84" width="8" height="18" rx="3"/><rect class="van-wheel" x="58" y="84" width="8" height="18" rx="3"/>
+    <path class="van-glass" d="M 10 16 H 54 L 50 34 H 14 Z"/>
+    <rect class="van-roof" x="10" y="42" width="44" height="60" rx="4"/>
+    <path class="van-line" d="M 16 50 V 94 M 48 50 V 94"/>
+    <rect class="van-lamp" x="8" y="4" width="10" height="4" rx="2"/><rect class="van-lamp" x="46" y="4" width="10" height="4" rx="2"/>
+    <rect class="van-tail" x="8" y="112" width="10" height="4" rx="2"/><rect class="van-tail" x="46" y="112" width="10" height="4" rx="2"/>
+  </svg>`;
+}
+
+function renderLot(rows, issueStatus, alertsByVehicle, settings) {
+  const groups = new Map();
+  for (const v of rows) {
+    const key = v.base || '(拠点なし)';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(v);
+  }
+  // 設定の拠点順 → それ以外
+  const order = [...settings.bases.filter((b) => groups.has(b)), ...[...groups.keys()].filter((k) => !settings.bases.includes(k))];
+  let idx = 0;
+  return `<div class="lot">${order.map((base) => {
+    const list = groups.get(base);
+    return `<section class="lot-area">
+      <div class="lot-sign"><span class="p">P</span><span class="name">${esc(base)}</span><span class="n">${list.length} 台</span></div>
+      <div class="lot-row">
+        ${list.map((v) => {
+          const i = idx++;
+          const alerts = alertsByVehicle.get(v.id) || [];
+          const worst = alerts[0]?.level || 'ok';
+          const st = Object.values(issueStatus.get(v.id) || {});
+          const issueCount = st.reduce((a, x) => a + x.count, 0);
+          const issueSev = st.map((x) => x.severity).sort((a, b) => L.SEVERITY[a].order - L.SEVERITY[b].order)[0];
+          const chips = [];
+          for (const a of alerts.slice(0, 2)) chips.push(`<span class="lot-chip ${a.level}">${esc(a.label.replace('の目安距離', '').replace('の目安日', ''))}${a.days != null ? ' ' + L.fmtDays(a.days) : ''}</span>`);
+          if (alerts.length > 2) chips.push(`<span class="lot-chip more">+${alerts.length - 2}</span>`);
+          return `<div class="slot st-${v.status}" data-action="open-vehicle" data-id="${esc(v.id)}" style="--i:${Math.min(i, 30)}" title="${esc(vehicleLabel(v))}">
+            <div class="slot-van">
+              ${miniVan(v, v.status === 'retired' ? 'none' : worst)}
+              ${issueCount ? `<span class="slot-issue sev-${issueSev}" title="未対応の異常 ${issueCount} 件">${issueCount}</span>` : ''}
+              ${v.status === 'repair' ? '<span class="slot-flag repair">修理中</span>' : v.status === 'idle' ? '<span class="slot-flag idle">休車</span>' : v.status === 'retired' ? '<span class="slot-flag retired">廃車</span>' : ''}
+            </div>
+            <div class="slot-code">${esc(v.code)}</div>
+            <div class="slot-sub">${esc(v.name || v.model || '')}</div>
+            <div class="slot-plate">${esc(v.plate)}</div>
+            <div class="slot-chips">${chips.join('')}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </section>`;
+  }).join('')}</div>`;
 }
 
 // ---- 車両詳細 ----
@@ -402,8 +471,8 @@ function renderDiagram(issues, selected) {
   });
   return `<div class="diagram">
     <svg viewBox="20 0 260 460" role="img" aria-label="車両の上面図">
-      <rect class="body-shadow" x="64" y="12" width="172" height="436" rx="26"/>
-      <text class="dir" x="150" y="8">▲ 前</text>
+      <path class="body-shadow" d="M 104 8 H 196 Q 236 8 236 48 V 420 Q 236 448 208 448 H 92 Q 64 448 64 420 V 48 Q 64 8 104 8 Z"/>
+      <text class="dir" x="150" y="4">▲ 前</text>
       ${shapes.join('')}
     </svg>
     <div class="part-chips">${chips.join('')}</div>
@@ -884,6 +953,7 @@ document.addEventListener('click', (e) => {
       render();
       break;
     }
+    case 'set-view': ui.vehicles.view = el.dataset.view; render(); break;
     case 'export-vehicles-csv': exportVehiclesCSV(); break;
     case 'export-records-csv': exportRecordsCSV(); break;
     case 'export-json':

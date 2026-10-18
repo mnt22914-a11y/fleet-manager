@@ -12,14 +12,14 @@ function rng(seed) {
 }
 
 const MODELS = [
-  { maker: 'トヨタ', model: 'ハイエースバン', cls: '400' },
-  { maker: '日産', model: 'キャラバン', cls: '400' },
-  { maker: 'いすゞ', model: 'エルフ 2t', cls: '100' },
-  { maker: '三菱ふそう', model: 'キャンター 2t', cls: '100' },
-  { maker: '日野', model: 'デュトロ 3t', cls: '100' },
   { maker: 'スズキ', model: 'エブリイ', cls: '480' },
   { maker: 'ダイハツ', model: 'ハイゼットカーゴ', cls: '480' },
-  { maker: 'トヨタ', model: 'タウンエースバン', cls: '400' },
+  { maker: 'ホンダ', model: 'N-VAN', cls: '480' },
+  { maker: '日産', model: 'クリッパーバン', cls: '480' },
+  { maker: '三菱', model: 'ミニキャブバン', cls: '480' },
+  { maker: 'スズキ', model: 'エブリイ', cls: '480' },
+  { maker: 'ダイハツ', model: 'ハイゼットカーゴ', cls: '480' },
+  { maker: 'トヨタ', model: 'ピクシスバン', cls: '480' },
 ];
 const REGIONS = ['品川', '足立', '横浜', '川崎', '千葉', '大宮'];
 const KANA = ['あ', 'い', 'う', 'か', 'き', 'く', 'さ', 'す'];
@@ -60,7 +60,7 @@ export function buildSample(today = todayISO()) {
     if (i === 11) status = 'repair';
     if (i === 17) status = 'idle';
     if (i === 23) status = 'retired';
-    const plateCls = m.cls === '100' ? '100' : m.cls;
+    const plateCls = m.cls;
     const v = {
       id: uid(),
       code: `V-${String(i + 1).padStart(3, '0')}`,

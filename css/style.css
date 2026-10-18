@@ -388,3 +388,97 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
 @media (max-width: 860px) {
   .body-wrap { grid-template-columns: 1fr; }
 }
+
+/* ---- 駐車場ビュー ---- */
+.view-seg { gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg-btn { border: 0; background: var(--surface); color: var(--text-2); padding: 6px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.seg-btn + .seg-btn { border-left: 1px solid var(--border); }
+.seg-btn.on { background: var(--accent); color: var(--accent-ink); }
+
+.lot {
+  --asphalt: #3a3f47;
+  --asphalt-2: #41474f;
+  --line: rgba(255, 255, 255, 0.78);
+  background:
+    repeating-linear-gradient(45deg, transparent 0 14px, rgba(255, 255, 255, 0.015) 14px 15px),
+    radial-gradient(circle at 20% 10%, var(--asphalt-2), var(--asphalt) 60%);
+  padding: 18px 18px 8px;
+  border-radius: 0 0 var(--radius) var(--radius);
+  display: flex; flex-direction: column; gap: 22px;
+}
+.lot-area { }
+.lot-sign { display: inline-flex; align-items: center; gap: 10px; background: #1f5f3a; color: #fff; padding: 6px 14px 6px 8px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }
+.lot-sign .p { background: #fff; color: #1f5f3a; font-weight: 800; width: 26px; height: 26px; border-radius: 5px; display: grid; place-items: center; font-size: 16px; }
+.lot-sign .name { font-weight: 700; font-size: 14px; }
+.lot-sign .n { font-size: 12px; opacity: 0.85; }
+.lot-row {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  border-top: 4px solid var(--line); border-bottom: 4px solid var(--line);
+  padding-bottom: 10px;
+}
+.slot {
+  position: relative; padding: 14px 8px 10px; text-align: center; cursor: pointer;
+  border-left: 3px solid var(--line); min-height: 240px;
+  color: #e8edf3;
+  animation: driveIn 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+  transition: background 0.2s;
+}
+.slot:last-child { border-right: 3px solid var(--line); }
+.slot:hover { background: rgba(255, 255, 255, 0.06); }
+.slot:hover .van { transform: translateY(-4px) scale(1.04); }
+.slot.st-idle, .slot.st-retired { color: #a9b2bd; }
+@keyframes driveIn { from { opacity: 0; transform: translateY(-28px); } to { opacity: 1; transform: none; } }
+.slot-van { position: relative; width: 72px; height: 132px; margin: 0 auto 8px; }
+.van { width: 100%; height: 100%; overflow: visible; transition: transform 0.25s; filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.45)); }
+.van .van-body { fill: #f3f5f7; stroke: #c9d1da; stroke-width: 1.2; }
+.van .van-glass { fill: #8fb5d8; }
+.van .van-roof { fill: #e4e8ec; }
+.van .van-line { stroke: #c9d1da; stroke-width: 1; fill: none; }
+.van .van-wheel { fill: #1b1f24; }
+.van .van-lamp { fill: #ffe9a8; }
+.van .van-tail { fill: #e0574a; }
+.van.st-repair .van-body { fill: #f7e4b8; stroke: #d9b45a; }
+.van.st-repair .van-roof { fill: #f1d79a; }
+.van.st-idle .van-body { fill: #b9c0c8; stroke: #959ca5; }
+.van.st-idle .van-roof { fill: #aab1b9; }
+.van.st-idle .van-glass { fill: #8a9099; }
+.van.st-retired { opacity: 0.45; }
+.van.level-critical, .van.level-expired { filter: drop-shadow(0 0 0 rgba(0,0,0,0)) drop-shadow(0 0 10px rgba(239, 80, 60, 0.85)); animation: glowRed 1.6s ease-in-out infinite; }
+.van.level-warning { filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 5px rgba(224, 176, 79, 0.7)); }
+@keyframes glowRed { 0%, 100% { filter: drop-shadow(0 6px 6px rgba(0,0,0,0.45)) drop-shadow(0 0 2px rgba(239,80,60,0.35)); } 50% { filter: drop-shadow(0 6px 6px rgba(0,0,0,0.45)) drop-shadow(0 0 9px rgba(239,80,60,0.9)); } }
+.slot-issue {
+  position: absolute; top: -6px; right: -4px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  background: var(--critical); color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center;
+  box-shadow: 0 0 0 2px var(--asphalt);
+}
+.slot-issue.sev-mid { background: #d99a2b; }
+.slot-issue.sev-low { background: #4f8fd1; }
+.slot-flag {
+  position: absolute; left: 50%; top: 56px; transform: translateX(-50%) rotate(-8deg);
+  padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.05em; white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+.slot-flag.repair { background: #f0b429; color: #3a2a00; }
+.slot-flag.idle { background: #6b7480; color: #fff; }
+.slot-flag.retired { background: #444a52; color: #cfd5dc; text-decoration: line-through; }
+.slot-code { font-weight: 800; font-size: 14px; letter-spacing: 0.02em; }
+.slot-sub { font-size: 11.5px; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slot-plate { font-size: 11px; margin-top: 4px; display: inline-block; background: #fff; color: #1b2430; border: 1px solid #9aa3ad; border-radius: 4px; padding: 1px 7px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.slot.st-idle .slot-plate, .slot.st-retired .slot-plate { background: #d7dce2; }
+.slot-chips { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-top: 7px; min-height: 18px; }
+.lot-chip { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); color: #fff; white-space: nowrap; }
+.lot-chip.critical, .lot-chip.expired { background: #c0392b; }
+.lot-chip.warning { background: #b7791f; }
+.lot-chip.more { background: rgba(255, 255, 255, 0.22); }
+
+@media (prefers-reduced-motion: reduce) {
+  .slot { animation: none; }
+  .van.level-critical, .van.level-expired { animation: none; }
+}
+@media (max-width: 860px) {
+  .lot { padding: 12px 10px 4px; }
+  .lot-row { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  .slot { min-height: 210px; padding: 10px 4px 8px; }
+  .slot-van { width: 56px; height: 104px; }
+}
