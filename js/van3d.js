@@ -436,7 +436,6 @@ export function mountVan3D(container, { status = {}, selected = '', onSelect } =
     if (!alive) return;
     raf = requestAnimationFrame(frame);
     if (document.hidden) return;
-    if (now - lastInteract > 4000) view.yaw += 0.0025; // 触っていないときはゆっくり回る
     camera.position.set(
       target.x + view.radius * Math.sin(view.pitch) * Math.sin(view.yaw),
       target.y + view.radius * Math.cos(view.pitch),
