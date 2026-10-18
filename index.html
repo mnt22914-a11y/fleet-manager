@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>車両管理</title>
+  <meta name="theme-color" content="#1f4e79">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="車両管理">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="layout">
+    <aside id="sidebar">
+      <div id="brand">
+        <img src="icons/icon.svg" alt="">
+        <div><strong>車両管理</strong><small id="brand-company">配送車両の台帳と整備記録</small></div>
+      </div>
+      <nav id="sidenav">
+        <a href="#/" data-route="home"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5V20H4z"/><path d="M10 20v-6h4v6"/></svg>ダッシュボード<span class="badge-count hidden" id="nav-alert-count"></span></a>
+        <a href="#/vehicles" data-route="vehicles"><svg viewBox="0 0 24 24"><path d="M3 15V9h10v6"/><path d="M13 11h4l3 3v1h-7"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>車両台帳</a>
+        <a href="#/maintenance" data-route="maintenance"><svg viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0 5 5L9 22l-3-3 10.5-10.5z"/><path d="M15 5l4 4"/></svg>整備記録</a>
+        <a href="#/settings" data-route="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4L18 18M18 6l-1.6 1.6M7.6 16.4L6 18"/></svg>設定</a>
+      </nav>
+      <footer>保存先: このブラウザ(ローカル)</footer>
+    </aside>
+    <main id="app"><p class="empty">読み込み中…</p></main>
+  </div>
+  <nav id="tabbar">
+    <a href="#/" data-route="home"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5V20H4z"/></svg>ホーム</a>
+    <a href="#/vehicles" data-route="vehicles"><svg viewBox="0 0 24 24"><path d="M3 15V9h10v6"/><path d="M13 11h4l3 3v1h-7"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>車両</a>
+    <a href="#/maintenance" data-route="maintenance"><svg viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0 5 5L9 22l-3-3 10.5-10.5z"/></svg>整備</a>
+    <a href="#/settings" data-route="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2"/></svg>設定</a>
+  </nav>
+  <div id="dialog-root"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
