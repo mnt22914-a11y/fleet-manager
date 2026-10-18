@@ -15,14 +15,15 @@ const COLORS = {
   issue: 0xe0352b, issueEmissive: 0x7a0a05, selected: 0x1f4e79,
 };
 
-// ---- 寸法(m)。スズキ エブリイ バン DA17V: 全長 3,395 / 全幅 1,475 / 全高 1,895(ハイルーフ) / ホイールベース 2,430 ----
+// ---- 寸法(m)。三面図より: 全長 3,395 / 全幅 1,475 / 全高 1,895 / ホイールベース 2,450 / 前オーバーハング 550 / 後 395 / タイヤ 145/80R12 ----
 const DIM = {
   W: 1.475, L: 3.395, H: 1.895,
-  front: 1.70, rear: -1.695,          // z(前が +)
-  wheelF: 1.13, wheelR: -1.30,        // 車軸位置 z
-  wheelR_: 0.275, tireW: 0.15,         // 155/80R12 相当
-  floor: 0.30, belt: 1.05, winTop: 1.72,
-  bevel: 0.05,
+  front: 1.6975, rear: -1.6975,       // z(前が +)
+  wheelF: 1.6975 - 0.55, wheelR: -1.6975 + 0.395,
+  tireR: 0.268, rimR: 0.152, tireW: 0.145,
+  floor: 0.30, belt: 1.06, winTop: 1.70,
+  arch: 0.31,                          // ホイールアーチの半径(仕上がり)
+  bevel: 0.06,                         // 車体の角の丸み。輪郭はこの分だけ内側に描き、押し出し時に膨らませる
 };
 
 // カメラの向きはページを再描画しても保つ
@@ -47,9 +48,12 @@ function getRenderer() {
 // ---- 材質 ----
 const MAT = {
   paint: () => new THREE.MeshPhysicalMaterial({ color: COLORS.paint, roughness: 0.32, metalness: 0.0, clearcoat: 1, clearcoatRoughness: 0.08 }),
+  paintDim: () => new THREE.MeshPhysicalMaterial({ color: 0xe4e8ec, roughness: 0.4, clearcoat: 0.8, clearcoatRoughness: 0.15 }),
   bumper: () => new THREE.MeshPhysicalMaterial({ color: COLORS.bumper, roughness: 0.5, metalness: 0.0, clearcoat: 0.4, clearcoatRoughness: 0.3 }),
-  glass: () => new THREE.MeshPhysicalMaterial({ color: COLORS.glass, roughness: 0.06, metalness: 0.15, transparent: true, opacity: 0.78, clearcoat: 1 }),
+  glass: () => new THREE.MeshPhysicalMaterial({ color: COLORS.glass, roughness: 0.06, metalness: 0.15, transparent: true, opacity: 0.8, clearcoat: 1 }),
+  trim: () => new THREE.MeshStandardMaterial({ color: 0x15181c, roughness: 0.7 }),
   dark: () => new THREE.MeshStandardMaterial({ color: COLORS.dark, roughness: 0.85, metalness: 0.05 }),
+  grey: () => new THREE.MeshStandardMaterial({ color: 0x8e969e, roughness: 0.7 }),
   tire: () => new THREE.MeshStandardMaterial({ color: 0x1a1d20, roughness: 0.95 }),
   rim: () => new THREE.MeshStandardMaterial({ color: COLORS.rim, roughness: 0.35, metalness: 0.7 }),
   chrome: () => new THREE.MeshStandardMaterial({ color: COLORS.chrome, roughness: 0.2, metalness: 0.9 }),
@@ -78,27 +82,28 @@ function roundedRectShape(w, h, r) {
   return s;
 }
 
-/** 側面のシルエット(x=z, y=y)。ホイールアーチも輪郭に含める。 */
+/** 側面のシルエット(x=z, y=y)。bevel 分だけ内側に描く(押し出しで外へ膨らむ)。ホイールアーチも輪郭に含める。 */
 function sideProfile() {
-  const { front, rear, floor, wheelF, wheelR } = DIM;
-  const arch = 0.31;
+  const { front, rear, floor, wheelF, wheelR, arch, bevel: B } = DIM;
+  const R = arch + B;                      // 内側に描くのでアーチは大きく
+  const fl = floor + B;
   const s = new THREE.Shape();
-  s.moveTo(front - 0.10, floor);            // 前バンパー下
-  s.lineTo(front, floor + 0.08);
-  s.lineTo(front, 0.96);                    // 立ったフロントパネル
-  s.lineTo(front - 0.02, 1.00);
-  s.lineTo(front - 0.36, 1.66);             // フロントガラス(約 25° 寝ている)
-  s.quadraticCurveTo(front - 0.52, 1.895, front - 0.80, 1.895); // 屋根前端の丸み
-  s.lineTo(rear + 0.30, 1.895);             // 屋根
-  s.quadraticCurveTo(rear + 0.02, 1.895, rear, 1.66); // 屋根後端
-  s.lineTo(rear, 0.56);                     // バックドア
-  s.lineTo(rear + 0.02, floor + 0.06);      // 後バンパー
-  s.lineTo(rear + 0.06, floor);
-  s.lineTo(wheelR - arch, floor);
-  s.absarc(wheelR, floor + 0.02, arch, Math.PI, 0, true); // 後ホイールアーチ
-  s.lineTo(wheelF - arch, floor);
-  s.absarc(wheelF, floor + 0.02, arch, Math.PI, 0, true); // 前ホイールアーチ
-  s.lineTo(front - 0.10, floor);
+  s.moveTo(front - 0.10, fl);              // 前バンパー下端
+  s.lineTo(front - B, fl + 0.07);
+  s.lineTo(front - B, 0.78);               // バンパー前面(縦)
+  s.lineTo(front - 0.13, 0.97);            // ノーズ(ヘッドライトの面)は少し後傾
+  s.lineTo(front - 0.47, 1.67);            // フロントガラス(約 26°)
+  s.quadraticCurveTo(front - 0.60, 1.895 - B, front - 0.82, 1.895 - B); // 屋根前端の丸み
+  s.lineTo(rear + 0.34, 1.895 - B);        // 屋根
+  s.quadraticCurveTo(rear + B + 0.02, 1.895 - B, rear + B, 1.68); // 屋根後端
+  s.lineTo(rear + B, 0.54);                // バックドア
+  s.lineTo(rear + B + 0.02, fl + 0.06);    // 後バンパー
+  s.lineTo(rear + 0.10, fl);
+  s.lineTo(wheelR - R, fl);
+  s.absarc(wheelR, floor, R, Math.PI, 0, true);  // 後ホイールアーチ
+  s.lineTo(wheelF - R, fl);
+  s.absarc(wheelF, floor, R, Math.PI, 0, true);  // 前ホイールアーチ
+  s.lineTo(front - 0.10, fl);
   return s;
 }
 
@@ -114,6 +119,13 @@ function sidePanel(pts, side, mat, part, offset = 0.004, depth = 0) {
   return m;
 }
 
+/** 黒いゴム枠付きのガラス。 */
+function sideGlass(pts, side, part, offset = 0.012) {
+  const cz = pts.reduce((a, p) => a + p[0], 0) / pts.length, cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+  const grow = (k) => pts.map(([z, y]) => [cz + (z - cz) * k, cy + (y - cy) * k]);
+  return [sidePanel(grow(1.06), side, MAT.trim(), part, offset - 0.003), sidePanel(pts, side, MAT.glass(), part, offset)];
+}
+
 /** 前後の面に貼るパネル(z 固定、x/y で指定)。 */
 function facePanel(w, h, r, mat, part, x, y, z, facing = 1, depth = 0) {
   const shape = roundedRectShape(w, h, r);
@@ -124,146 +136,194 @@ function facePanel(w, h, r, mat, part, x, y, z, facing = 1, depth = 0) {
   return m;
 }
 
+function arcPts(cz, cy, r, a0, a1, n = 10) {
+  const out = [];
+  for (let i = 0; i <= n; i++) { const a = (a0 + (a1 - a0) * i / n) * Math.PI / 180; out.push([cz + r * Math.cos(a), cy + r * Math.sin(a)]); }
+  return out;
+}
+
 function wheel(part, x, z) {
   const g = new THREE.Group();
-  const tire = mesh(new THREE.CylinderGeometry(DIM.wheelR_, DIM.wheelR_, DIM.tireW, 36), MAT.tire(), part);
+  const tire = mesh(new THREE.CylinderGeometry(DIM.tireR, DIM.tireR, DIM.tireW, 40), MAT.tire(), part);
   tire.rotation.z = Math.PI / 2;
-  const rim = mesh(new THREE.CylinderGeometry(0.17, 0.17, DIM.tireW + 0.01, 24), MAT.rim(), part);
+  const rim = mesh(new THREE.CylinderGeometry(DIM.rimR, DIM.rimR, DIM.tireW + 0.012, 28), MAT.rim(), part);
   rim.rotation.z = Math.PI / 2;
-  const cap = mesh(new THREE.CylinderGeometry(0.06, 0.06, DIM.tireW + 0.03, 16), MAT.chrome(), part);
+  const cap = mesh(new THREE.CylinderGeometry(0.05, 0.05, DIM.tireW + 0.03, 16), MAT.chrome(), part);
   cap.rotation.z = Math.PI / 2;
-  // ホイールの穴(ホイールキャップの模様)
-  for (let i = 0; i < 6; i++) {
-    const hole = mesh(new THREE.CylinderGeometry(0.03, 0.03, DIM.tireW + 0.02, 10), MAT.dark(), part);
+  g.add(tire, rim, cap);
+  for (let i = 0; i < 8; i++) {   // スチールホイールの穴
+    const hole = mesh(new THREE.CylinderGeometry(0.018, 0.018, DIM.tireW + 0.02, 10), MAT.dark(), part);
     hole.rotation.z = Math.PI / 2;
-    const a = (i / 6) * Math.PI * 2;
-    hole.position.set(0, Math.cos(a) * 0.11, Math.sin(a) * 0.11);
+    const a = (i / 8) * Math.PI * 2;
+    hole.position.set(0, Math.cos(a) * 0.105, Math.sin(a) * 0.105);
     g.add(hole);
   }
-  g.add(tire, rim, cap);
-  g.position.set(x, DIM.wheelR_ + 0.01, z);
+  for (let i = 0; i < 4; i++) {   // ハブナット
+    const nut = mesh(new THREE.CylinderGeometry(0.01, 0.01, DIM.tireW + 0.04, 6), MAT.chrome(), part);
+    nut.rotation.z = Math.PI / 2;
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    nut.position.set(0, Math.cos(a) * 0.05, Math.sin(a) * 0.05);
+    g.add(nut);
+  }
+  g.position.set(x, DIM.tireR + 0.005, z);
   return g;
 }
 
 /** エブリイ バンを組み立てる。各メッシュの userData.part に部位 ID を入れる(車体本体は null → 位置から判定)。 */
 function buildVan() {
   const g = new THREE.Group();
-  const { W, front, rear, belt, winTop, bevel } = DIM;
+  const { W, front, rear, belt, winTop, bevel, floor, wheelF, wheelR, arch } = DIM;
   const half = W / 2;
 
   // 車体本体: 側面シルエットを幅方向に押し出し、角を丸める
-  const body = mesh(new THREE.ExtrudeGeometry(sideProfile(), { depth: W - bevel * 2, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 4, curveSegments: 16 }), MAT.paint(), null);
-  body.rotation.y = -Math.PI / 2;            // 押し出し方向(+z) → +x
-  body.position.x = W / 2 - bevel;       // 押し出しは -x へ進むので、右端から始める
+  const body = mesh(new THREE.ExtrudeGeometry(sideProfile(), { depth: W - bevel * 2, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 5, curveSegments: 18 }), MAT.paint(), null);
+  body.rotation.y = -Math.PI / 2;            // 押し出し方向(+z) → -x
+  body.position.x = half - bevel;
   g.add(body);
 
-  // 下回り(ホイールアーチから向こうが見えないように)
-  const under = mesh(new THREE.BoxGeometry(W - 0.2, 0.24, Math.abs(front - rear) - 0.3), MAT.dark(), 'underbody');
-  under.position.set(0, DIM.floor + 0.06, (front + rear) / 2);
-  g.add(under);
-  const fuel = mesh(new THREE.BoxGeometry(0.6, 0.18, 0.5), MAT.dark(), 'underbody');
-  fuel.position.set(0.1, 0.26, -0.5); g.add(fuel);
-  const muffler = mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 12), MAT.chrome(), 'underbody');
-  muffler.rotation.x = Math.PI / 2; muffler.position.set(0.45, 0.22, rear + 0.35); g.add(muffler);
+  // 下回り・シャシー(アーチの向こうが見えないように)
+  const under = mesh(new THREE.BoxGeometry(W - 0.16, 0.22, Math.abs(front - rear) - 0.3), MAT.dark(), 'underbody');
+  under.position.set(0, floor + 0.05, (front + rear) / 2); g.add(under);
+  const tank = mesh(new THREE.BoxGeometry(0.55, 0.16, 0.5), MAT.grey(), 'underbody');
+  tank.position.set(0.05, 0.24, -0.55); g.add(tank);
+  const muffler = mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.5, 14), MAT.grey(), 'underbody');
+  muffler.rotation.x = Math.PI / 2; muffler.position.set(0.40, 0.21, rear + 0.40); g.add(muffler);
+  const tip = mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.1, 10), MAT.chrome(), 'underbody');
+  tip.rotation.x = Math.PI / 2; tip.position.set(0.40, 0.21, rear + 0.12); g.add(tip);
 
   // ---- 側面(左右) ----
+  const doorBottom = 0.44;
   for (const side of [-1, 1]) {
     const partSide = side < 0 ? 'side_l' : 'side_r';
-    // 前ドア(パネル)と窓
-    g.add(sidePanel([[0.52, 0.40], [0.760, 0.320], [0.773, 0.416], [0.810, 0.505], [0.868, 0.582], [0.945, 0.640], [1.034, 0.677], [1.130, 0.690], [1.226, 0.677], [1.315, 0.640], [1.392, 0.582], [1.40, 0.58], [1.40, 0.98], [1.30, 1.04], [1.02, winTop + 0.03], [0.52, winTop + 0.03]], side, MAT.paint(), 'cabin', 0.006));
-    g.add(sidePanel([[0.56, belt], [1.27, belt], [1.02, winTop], [0.56, winTop]], side, MAT.glass(), 'cabin', 0.012));
-    // スライドドアと窓
-    g.add(sidePanel([[-0.82, 0.40], [0.50, 0.40], [0.50, winTop + 0.03], [-0.82, winTop + 0.03]], side, MAT.paint(), partSide, 0.008));
-    g.add(sidePanel([[-0.78, belt], [0.46, belt], [0.46, winTop], [-0.78, winTop]], side, MAT.glass(), partSide, 0.014));
-    // リアクォーター(荷室側面)と窓
-    g.add(sidePanel([[-0.84, 0.40], [-0.930, 0.320], [-0.943, 0.416], [-0.980, 0.505], [-1.038, 0.582], [-1.115, 0.640], [-1.204, 0.677], [-1.300, 0.690], [-1.396, 0.677], [-1.485, 0.640], [-1.562, 0.582], [-1.620, 0.505], [-1.657, 0.416], [rear + 0.03, 0.40], [rear + 0.03, winTop + 0.03], [-0.84, winTop + 0.03]], side, MAT.paint(), 'cargo', 0.006));
-    g.add(sidePanel([[rear + 0.10, belt], [-0.88, belt], [-0.88, winTop], [rear + 0.10, winTop]], side, MAT.glass(), 'cargo', 0.012));
-    // ドアの継ぎ目(黒い細線)
-    for (const z of [0.51, -0.83]) g.add(sidePanel([[z - 0.006, 0.40], [z + 0.006, 0.40], [z + 0.006, winTop + 0.03], [z - 0.006, winTop + 0.03]], side, MAT.dark(), partSide, 0.010));
+    // 前ドア: 下辺は前アーチをよける。前縁は A ピラーに沿って寝る
+    g.add(sidePanel([[0.53, doorBottom], [wheelF - 0.42, doorBottom], ...arcPts(wheelF, floor, 0.42, 180, 50), [1.46, 0.74], [1.46, 0.96], [1.30, 1.02], [1.00, winTop + 0.04], [0.53, winTop + 0.04]], side, MAT.paint(), 'cabin', 0.006));
+    // 前ドア窓 + 三角窓
+    sideGlass([[0.57, belt], [1.20, belt + 0.02], [0.98, winTop], [0.57, winTop]], side, 'cabin').forEach((m) => g.add(m));
+    sideGlass([[1.23, belt + 0.02], [1.33, belt + 0.02], [1.05, winTop - 0.05]], side, 'cabin').forEach((m) => g.add(m));
+    // スライドドア + 窓(スライド窓の桟つき)
+    g.add(sidePanel([[-0.83, doorBottom], [0.51, doorBottom], [0.51, winTop + 0.04], [-0.83, winTop + 0.04]], side, MAT.paint(), partSide, 0.008));
+    sideGlass([[-0.79, belt], [0.47, belt], [0.47, winTop], [-0.79, winTop]], side, partSide, 0.014).forEach((m) => g.add(m));
+    g.add(sidePanel([[-0.18, belt], [-0.16, belt], [-0.16, winTop], [-0.18, winTop]], side, MAT.trim(), partSide, 0.016));
+    g.add(sidePanel([[-0.79, belt + 0.30], [0.47, belt + 0.30], [0.47, belt + 0.315], [-0.79, belt + 0.315]], side, MAT.trim(), partSide, 0.016));
+    // リアクォーター(荷室側面): 下辺は後アーチをよける
+    g.add(sidePanel([[-0.85, doorBottom], [wheelR + 0.42, doorBottom], ...arcPts(wheelR, floor, 0.42, 0, 175), [rear + bevel + 0.01, 0.47], [rear + bevel + 0.01, winTop + 0.04], [-0.85, winTop + 0.04]], side, MAT.paint(), 'cargo', 0.006));
+    sideGlass([[rear + 0.14, belt], [-0.89, belt], [-0.89, winTop], [rear + 0.20, winTop], [rear + 0.15, winTop - 0.06]], side, 'cargo').forEach((m) => g.add(m));
+    // ドアの継ぎ目
+    for (const z of [0.52, -0.84]) g.add(sidePanel([[z - 0.005, doorBottom], [z + 0.005, doorBottom], [z + 0.005, winTop + 0.04], [z - 0.005, winTop + 0.04]], side, MAT.trim(), partSide, 0.011));
     // スライドドアのレール(窓下の溝)
-    g.add(sidePanel([[-0.82, belt - 0.08], [0.50, belt - 0.08], [0.50, belt - 0.06], [-0.82, belt - 0.06]], side, MAT.dark(), partSide, 0.010));
-    // ドアハンドル
-    for (const z of [0.66, 0.36]) {
-      const h = mesh(new THREE.BoxGeometry(0.02, 0.03, 0.14), MAT.dark(), z > 0.5 ? 'cabin' : partSide);
-      h.position.set(side * (half + 0.02), 0.98, z); g.add(h);
+    g.add(sidePanel([[-0.83, belt - 0.07], [0.51, belt - 0.07], [0.51, belt - 0.05], [-0.83, belt - 0.05]], side, MAT.trim(), partSide, 0.012));
+    // キャラクターライン(窓下を前後に走る折れ線)と、ドア下のサイドシル
+    g.add(sidePanel([[rear + 0.12, 0.775], [1.30, 0.775], [1.30, 0.79], [rear + 0.12, 0.79]], side, MAT.paintDim(), 'cargo', 0.009));
+    g.add(sidePanel([[-0.83, floor + 0.03], [wheelF - arch - 0.03, floor + 0.03], [wheelF - arch - 0.03, doorBottom - 0.005], [-0.83, doorBottom - 0.005]], side, MAT.bumper(), partSide, 0.005));
+    // ホイールアーチのモール
+    for (const wz of [wheelF, wheelR]) {
+      g.add(sidePanel([...arcPts(wz, floor, arch + 0.015, 180, 0, 14), ...arcPts(wz, floor, arch + 0.05, 0, 180, 14)], side, MAT.bumper(), wz > 0 ? 'cabin' : 'cargo', 0.010));
+      const flap = mesh(new THREE.BoxGeometry(0.015, 0.16, 0.10), MAT.trim(), 'underbody'); // 泥よけ
+      flap.position.set(side * (half - 0.09), floor + 0.08, wz - arch - 0.02); g.add(flap);
     }
-    // ドアミラー(ステー付き)
+    // ドアハンドル: 前ドアは横、スライドドアは縦グリップ
+    const h1 = mesh(new THREE.BoxGeometry(0.02, 0.035, 0.15), MAT.trim(), 'cabin'); h1.position.set(side * (half + 0.02), 0.985, 0.70); g.add(h1);
+    const h2 = mesh(new THREE.BoxGeometry(0.03, 0.14, 0.045), MAT.trim(), partSide); h2.position.set(side * (half + 0.025), 0.98, 0.42); g.add(h2);
+    // 給油口(左のみ)
+    if (side < 0) g.add(sidePanel([[-1.36, 0.86], [-1.22, 0.86], [-1.22, 0.99], [-1.36, 0.99]], side, MAT.paintDim(), 'cargo', 0.008));
+    // ドアミラー(ドア取り付け、ウインカー付き)
     const mirrorPart = side < 0 ? 'mirror_l' : 'mirror_r';
-    const arm = mesh(new THREE.BoxGeometry(0.10, 0.025, 0.05), MAT.dark(), mirrorPart);
-    arm.position.set(side * (half + 0.05), 1.22, 1.22); g.add(arm);
-    const mir = mesh(new THREE.BoxGeometry(0.075, 0.17, 0.21), MAT.paint(), mirrorPart);
-    mir.position.set(side * (half + 0.12), 1.30, 1.20); g.add(mir);
-    const mg = mesh(new THREE.BoxGeometry(0.01, 0.14, 0.18), MAT.glass(), mirrorPart);
-    mg.position.set(side * (half + 0.12), 1.30, 1.16); mg.material.opacity = 0.95; g.add(mg);
-    // 側面ウインカー
-    const w = mesh(new THREE.BoxGeometry(0.01, 0.04, 0.08), MAT.amber(), 'lights');
-    w.position.set(side * (half + 0.012), 0.92, 1.36); g.add(w);
+    const arm = mesh(new THREE.BoxGeometry(0.11, 0.03, 0.06), MAT.trim(), mirrorPart);
+    arm.position.set(side * (half + 0.055), 1.16, 1.18); g.add(arm);
+    const mir = mesh(new THREE.BoxGeometry(0.085, 0.19, 0.24), MAT.paint(), mirrorPart);
+    mir.position.set(side * (half + 0.135), 1.24, 1.16); g.add(mir);
+    const mg = mesh(new THREE.BoxGeometry(0.012, 0.16, 0.21), MAT.glass(), mirrorPart);
+    mg.position.set(side * (half + 0.135), 1.24, 1.10); mg.material.opacity = 0.95; g.add(mg);
+    const mt = mesh(new THREE.BoxGeometry(0.06, 0.02, 0.012), MAT.amber(), 'lights');
+    mt.position.set(side * (half + 0.15), 1.20, 1.285); g.add(mt);
+    // ヘッドライトの回り込み(側面側)
+    g.add(sidePanel([[front - 0.19, 0.80], [front - bevel - 0.004, 0.80], [front - 0.14, 0.99], [front - 0.27, 0.99]], side, MAT.lamp(), 'lights', 0.004));
   }
 
   // ---- 前面 ----
-  const fz = front + bevel + 0.002;
-  // フロントガラス(斜面に沿わせる)
-  const ws = mesh(new THREE.ExtrudeGeometry(roundedRectShape(1.30, 0.74, 0.06), { depth: 0.012, bevelEnabled: false }), MAT.glass(), 'windshield');
-  ws.position.set(0, 1.36, front - 0.19 + 0.055);
-  ws.rotation.x = -Math.atan2(0.34, 0.66);
-  g.add(ws);
-  // ワイパー
-  for (const x of [-0.25, 0.30]) {
-    const wp = mesh(new THREE.BoxGeometry(0.42, 0.012, 0.02), MAT.dark(), 'windshield');
-    wp.position.set(x, 1.03, front - 0.02 + bevel); wp.rotation.z = x < 0 ? 0.35 : 0.25; g.add(wp);
+  const fz = front + 0.002;
+  // フロントガラス(上がやや狭い台形、ゴム枠付き)
+  const wsShape = new THREE.Shape(); wsShape.moveTo(-0.66, -0.37); wsShape.lineTo(0.66, -0.37); wsShape.lineTo(0.60, 0.37); wsShape.quadraticCurveTo(0.56, 0.40, 0.52, 0.40); wsShape.lineTo(-0.52, 0.40); wsShape.quadraticCurveTo(-0.56, 0.40, -0.60, 0.37); wsShape.closePath();
+  const wsAngle = -Math.atan2(0.34, 0.70);
+  const wsNormal = new THREE.Vector3(0, Math.sin(-wsAngle), Math.cos(-wsAngle));
+  const wsMid = new THREE.Vector3(0, 1.35, front - 0.245);
+  const wsTrim = mesh(new THREE.ShapeGeometry(wsShape), MAT.trim(), 'windshield');
+  wsTrim.scale.set(1.045, 1.06, 1); wsTrim.position.copy(wsMid).addScaledVector(wsNormal, 0.006); wsTrim.rotation.x = wsAngle; g.add(wsTrim);
+  const ws = mesh(new THREE.ExtrudeGeometry(wsShape, { depth: 0.012, bevelEnabled: false }), MAT.glass(), 'windshield');
+  ws.position.copy(wsMid).addScaledVector(wsNormal, 0.009); ws.rotation.x = wsAngle; g.add(ws);
+  // ワイパー(2 本、左寄り)
+  for (const [x, rz] of [[-0.42, 0.40], [0.12, 0.30]]) {
+    const wp = mesh(new THREE.BoxGeometry(0.46, 0.012, 0.018), MAT.trim(), 'windshield');
+    wp.position.copy(wsMid).addScaledVector(wsNormal, 0.03).add(new THREE.Vector3(x + 0.1, -0.30, 0.14)); wp.rotation.z = rz; wp.rotation.x = wsAngle; g.add(wp);
   }
-  // フロントパネル(ボンネットにあたる短い面)
-  g.add(facePanel(1.30, 0.18, 0.03, MAT.paint(), 'hood', 0, 0.90, fz + 0.002));
-  const hoodLine = mesh(new THREE.BoxGeometry(1.2, 0.006, 0.006), MAT.dark(), 'hood'); hoodLine.position.set(0, 0.805, fz + 0.004); g.add(hoodLine);
-  // ヘッドライト(左右、やや外側へ回り込む台形)
-  for (const sgn of [-1, 1]) {
-    const hl = facePanel(0.36, 0.17, 0.05, MAT.lamp(), 'lights', sgn * 0.50, 0.895, fz + 0.006, 1, 0.02);
-    g.add(hl);
-    const inner = mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.02, 20), MAT.chrome(), 'lights');
-    inner.rotation.x = Math.PI / 2; inner.position.set(sgn * 0.58, 0.895, fz + 0.02); g.add(inner);
-    const turn = facePanel(0.09, 0.06, 0.02, MAT.amber(), 'lights', sgn * 0.26, 0.86, fz + 0.03);
-    g.add(turn);
-  }
-  // バンパー(前): 樹脂、グリル、ナンバー、フォグ
-  g.add(facePanel(W - 0.02, 0.46, 0.06, MAT.bumper(), 'front_bumper', 0, 0.565, fz + 0.004, 1, 0.03));
-  g.add(facePanel(0.86, 0.07, 0.02, MAT.dark(), 'front_bumper', 0, 0.735, fz + 0.036));
-  g.add(facePanel(0.70, 0.10, 0.02, MAT.dark(), 'front_bumper', 0, 0.44, fz + 0.036));
-  g.add(facePanel(0.33, 0.165, 0.01, MAT.plate(), 'front_bumper', 0, 0.60, fz + 0.04));
-  for (const sgn of [-1, 1]) {
-    const fog = mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.02, 16), MAT.lamp(), 'front_bumper');
-    fog.rotation.x = Math.PI / 2; fog.position.set(sgn * 0.56, 0.42, fz + 0.04); g.add(fog);
-  }
-  // スズキのエンブレム
-  const emblem = mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.01, 20), MAT.chrome(), 'hood');
+  // ノーズ(ボンネット相当の短い面)とフードライン、エンブレム
+  g.add(facePanel(1.28, 0.17, 0.03, MAT.paint(), 'hood', 0, 0.885, fz + 0.002));
+  const hoodLine = mesh(new THREE.BoxGeometry(1.26, 0.006, 0.008), MAT.trim(), 'hood'); hoodLine.position.set(0, 0.80, fz + 0.006); g.add(hoodLine);
+  const emblem = mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.012, 24), MAT.chrome(), 'hood');
   emblem.rotation.x = Math.PI / 2; emblem.position.set(0, 0.90, fz + 0.012); g.add(emblem);
+  // ヘッドライト(角へ回り込む台形。プロジェクター + ウインカー)
+  for (const sgn of [-1, 1]) {
+    const hlShape = new THREE.Shape(); hlShape.moveTo(0, 0); hlShape.lineTo(sgn * 0.33, 0); hlShape.lineTo(sgn * 0.33, 0.19); hlShape.lineTo(sgn * 0.05, 0.19); hlShape.quadraticCurveTo(0, 0.19, 0, 0.14); hlShape.closePath();
+    const hl = mesh(new THREE.ExtrudeGeometry(hlShape, { depth: 0.02, bevelEnabled: false }), MAT.lamp(), 'lights');
+    hl.position.set(sgn * 0.35, 0.80, fz + 0.004); g.add(hl);
+    const ring = mesh(new THREE.TorusGeometry(0.055, 0.008, 8, 24), MAT.chrome(), 'lights');
+    ring.position.set(sgn * 0.57, 0.90, fz + 0.026); g.add(ring);
+    const proj = mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 20), MAT.trim(), 'lights');
+    proj.rotation.x = Math.PI / 2; proj.position.set(sgn * 0.57, 0.90, fz + 0.022); g.add(proj);
+    g.add(facePanel(0.12, 0.05, 0.015, MAT.amber(), 'lights', sgn * 0.44, 0.845, fz + 0.026));
+  }
+  // グリル(ヘッドライト間の横長スリット)
+  g.add(facePanel(0.60, 0.05, 0.015, MAT.trim(), 'hood', 0, 0.835, fz + 0.008));
+  // バンパー: 樹脂、中央の大きな開口と横バー、フォグ、ナンバー
+  g.add(facePanel(W - 0.02, 0.47, 0.07, MAT.bumper(), 'front_bumper', 0, 0.555, fz + 0.004, 1, 0.035));
+  g.add(facePanel(0.74, 0.17, 0.03, MAT.trim(), 'front_bumper', 0, 0.665, fz + 0.041));
+  for (const y of [0.63, 0.70]) g.add(facePanel(0.70, 0.02, 0.005, MAT.bumper(), 'front_bumper', 0, y, fz + 0.043));
+  g.add(facePanel(0.66, 0.06, 0.02, MAT.trim(), 'front_bumper', 0, 0.395, fz + 0.041));
+  g.add(facePanel(0.33, 0.165, 0.01, MAT.plate(), 'front_bumper', 0, 0.47, fz + 0.046));
+  for (const sgn of [-1, 1]) {
+    const house = mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 20), MAT.trim(), 'front_bumper');
+    house.rotation.x = Math.PI / 2; house.position.set(sgn * 0.56, 0.50, fz + 0.045); g.add(house);
+    const fog = mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 16), MAT.lamp(), 'front_bumper');
+    fog.rotation.x = Math.PI / 2; fog.position.set(sgn * 0.56, 0.50, fz + 0.055); g.add(fog);
+  }
 
   // ---- 後面 ----
-  const rz = rear - bevel - 0.002;
-  g.add(facePanel(1.22, 1.26, 0.04, MAT.paint(), 'rear', 0, 1.13, rz - 0.002, -1));              // バックドア
-  g.add(facePanel(1.10, 0.62, 0.05, MAT.glass(), 'rear', 0, 1.40, rz - 0.008, -1));              // リアガラス
-  const rwiper = mesh(new THREE.BoxGeometry(0.012, 0.36, 0.02), MAT.dark(), 'rear'); rwiper.position.set(0.1, 1.28, rz - 0.014); rwiper.rotation.z = -0.5; g.add(rwiper);
-  const rhandle = mesh(new THREE.BoxGeometry(0.16, 0.03, 0.02), MAT.dark(), 'rear'); rhandle.position.set(0, 0.92, rz - 0.012); g.add(rhandle);
-  g.add(facePanel(0.33, 0.165, 0.01, MAT.plate(), 'rear', 0, 0.66, rz - 0.012, -1));            // 後ナンバー
-  g.add(facePanel(W - 0.02, 0.26, 0.05, MAT.bumper(), 'rear', 0, 0.44, rz - 0.004, -1, 0.03));  // 後バンパー
-  for (const sgn of [-1, 1]) {                                                                   // 縦長テールランプ
-    g.add(facePanel(0.15, 0.62, 0.03, MAT.tail(), 'lights', sgn * 0.64, 1.14, rz - 0.006, -1, 0.015));
-    g.add(facePanel(0.11, 0.12, 0.02, MAT.lamp(), 'lights', sgn * 0.64, 1.00, rz - 0.024, -1));
-    g.add(facePanel(0.11, 0.12, 0.02, MAT.amber(), 'lights', sgn * 0.64, 1.28, rz - 0.024, -1));
+  const rz = rear - 0.002;
+  g.add(facePanel(1.24, 1.28, 0.05, MAT.paint(), 'rear', 0, 1.14, rz - 0.002, -1));              // バックドア
+  g.add(facePanel(1.16, 0.66, 0.09, MAT.trim(), 'rear', 0, 1.42, rz - 0.006, -1));               // リアガラスの枠
+  g.add(facePanel(1.10, 0.60, 0.08, MAT.glass(), 'rear', 0, 1.42, rz - 0.009, -1));
+  const hms = facePanel(0.28, 0.035, 0.012, MAT.tail(), 'lights', 0, 1.80, rz - 0.010, -1, 0.012); g.add(hms); // ハイマウントストップランプ
+  const rwiper = mesh(new THREE.BoxGeometry(0.012, 0.38, 0.02), MAT.trim(), 'rear'); rwiper.position.set(0.12, 1.30, rz - 0.018); rwiper.rotation.z = -0.55; g.add(rwiper);
+  const remblem = mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.012, 24), MAT.chrome(), 'rear'); remblem.rotation.x = Math.PI / 2; remblem.position.set(0, 0.98, rz - 0.012); g.add(remblem);
+  g.add(facePanel(0.48, 0.24, 0.03, MAT.paintDim(), 'rear', 0, 0.70, rz - 0.006, -1));           // ナンバーの凹み
+  g.add(facePanel(0.33, 0.165, 0.01, MAT.plate(), 'rear', 0, 0.70, rz - 0.014, -1));
+  const rhandle = mesh(new THREE.BoxGeometry(0.18, 0.03, 0.02), MAT.trim(), 'rear'); rhandle.position.set(0, 0.86, rz - 0.014); g.add(rhandle);
+  g.add(facePanel(W - 0.02, 0.24, 0.05, MAT.bumper(), 'rear', 0, 0.42, rz - 0.004, -1, 0.035));  // 後バンパー
+  for (const sgn of [-1, 1]) {
+    g.add(facePanel(0.16, 0.60, 0.03, MAT.tail(), 'lights', sgn * 0.645, 0.86, rz - 0.006, -1, 0.015)); // 縦長テールランプ
+    g.add(facePanel(0.12, 0.13, 0.02, MAT.lamp(), 'lights', sgn * 0.645, 0.70, rz - 0.024, -1));
+    g.add(facePanel(0.12, 0.13, 0.02, MAT.amber(), 'lights', sgn * 0.645, 1.02, rz - 0.024, -1));
+    g.add(facePanel(0.14, 0.06, 0.015, MAT.tail(), 'lights', sgn * 0.52, 0.42, rz - 0.041, -1));      // バンパーのリフレクター
   }
-  const hms = mesh(new THREE.BoxGeometry(0.30, 0.03, 0.02), MAT.tail(), 'lights'); hms.position.set(0, 1.78, rz - 0.01); g.add(hms); // ハイマウントストップランプ
 
-  // ---- 屋根・その他 ----
-  const antenna = mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.28, 8), MAT.dark(), 'cabin');
-  antenna.position.set(-0.55, 1.98, 0.75); antenna.rotation.x = -0.6; g.add(antenna);
-  for (const sgn of [-1, 1]) { // ルーフ両端のドリップモール(前後方向)
-    const rail = mesh(new THREE.BoxGeometry(0.012, 0.012, 2.3), MAT.dark(), 'cargo');
-    rail.position.set(sgn * (half - 0.07), 1.895 + bevel - 0.004, -0.35); g.add(rail);
+  // ---- 屋根 ----
+  const roofY = 1.895;
+  for (const x of [-0.42, -0.21, 0, 0.21, 0.42]) {        // ルーフの縦リブ
+    const rib = mesh(new THREE.BoxGeometry(0.03, 0.006, 2.1), MAT.paintDim(), 'cargo');
+    rib.position.set(x, roofY + 0.003, -0.42); g.add(rib);
   }
+  for (const sgn of [-1, 1]) {                           // ドリップレール
+    const rail = mesh(new THREE.BoxGeometry(0.014, 0.014, 2.6), MAT.trim(), 'cargo');
+    rail.position.set(sgn * (half - 0.05), roofY - 0.004, -0.35); g.add(rail);
+  }
+  const antBase = mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.03, 10), MAT.trim(), 'cargo'); antBase.position.set(-0.50, roofY + 0.015, -1.25); g.add(antBase);
+  const antenna = mesh(new THREE.CylinderGeometry(0.004, 0.006, 0.34, 8), MAT.trim(), 'cargo');
+  antenna.position.set(-0.50, roofY + 0.14, -1.14); antenna.rotation.x = -0.7; g.add(antenna);
 
   // ---- タイヤ ----
-  const wx = half - DIM.tireW / 2 - 0.02;
-  g.add(wheel('wheel_fl', -wx, DIM.wheelF), wheel('wheel_fr', wx, DIM.wheelF));
-  g.add(wheel('wheel_rl', -wx, DIM.wheelR), wheel('wheel_rr', wx, DIM.wheelR));
+  const wx = half - DIM.tireW / 2 - 0.03;
+  g.add(wheel('wheel_fl', -wx, wheelF), wheel('wheel_fr', wx, wheelF));
+  g.add(wheel('wheel_rl', -wx, wheelR), wheel('wheel_rr', wx, wheelR));
 
   // 元の色を控える(ハイライト解除用)
   g.traverse((o) => { if (o.isMesh) o.userData.base = o.material.color.getHex(); });
