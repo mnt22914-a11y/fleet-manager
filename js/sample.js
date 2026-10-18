@@ -131,9 +131,30 @@ export function buildSample(today = todayISO()) {
     });
   }
 
+  // 異常: 部位ごとに未対応のものをいくつか、対応済みも 1 件
+  const issues = [];
+  const addIssue = (idx, part, severity, title, detail, daysAgo, fixed = false) => issues.push({
+    id: uid(), vehicleId: vehicles[idx].id, part, severity, title, detail,
+    reportedAt: shift(today, -daysAgo), status: fixed ? 'fixed' : 'open',
+    fixedAt: fixed ? shift(today, -Math.max(0, daysAgo - 4)) : '',
+    createdAt: nowISO(), updatedAt: nowISO(),
+  });
+  addIssue(0, 'side_l', 'mid', '左スライドドアが閉まりにくい', 'レールにゴミが噛んでいる可能性。閉めるときに 2 回押す必要あり', 3);
+  addIssue(0, 'wheel_rr', 'low', '右後タイヤの空気が抜けやすい', '週 1 回 20kPa ほど下がる。バルブか釘の可能性', 9);
+  addIssue(0, 'lights', 'low', 'ナンバー灯が切れている', '', 1);
+  addIssue(11, 'front_bumper', 'high', 'フロントバンパー破損(接触事故)', '10/14 荷下ろし時にポールへ接触。左角が割れて垂れ下がっている', 4);
+  addIssue(11, 'hood', 'mid', 'アイドリングが不安定', '信号待ちで回転数が上下する', 12);
+  addIssue(5, 'windshield', 'high', 'フロントガラスにヒビ(運転席側 15cm)', '飛び石。視界にかかるため早急に交換', 2);
+  addIssue(8, 'cargo', 'mid', '荷室の床板がめくれている', '台車が引っかかる', 6);
+  addIssue(14, 'battery', 'mid', '朝一のエンジン始動が弱い', 'バッテリー交換から 3 年', 5);
+  addIssue(3, 'mirror_r', 'low', '右ミラーの電動格納が遅い', '', 20);
+  addIssue(2, 'wheel_fl', 'high', 'ブレーキ時に左前から異音', 'キーキー音。パッド摩耗の疑い', 1);
+  addIssue(6, 'rear', 'mid', 'バックランプ片側不点灯', '', 15, true);
+
   return {
     vehicles,
     records,
+    issues,
     settings: { alertDays: 30, warnDays: 60, odometerWarnKm: 1000, bases, companyName: 'サンプル運送（株）' },
   };
 }

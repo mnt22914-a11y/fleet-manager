@@ -135,3 +135,31 @@ test('書式', () => {
   assert.equal(L.fmtDays(0), '今日');
   assert.equal(L.fmtDays(12), 'あと12日');
 });
+
+test('partStatus: 部位ごとに未対応の最重要度と件数', () => {
+  const issues = [
+    { part: 'side_l', severity: 'low', status: 'open' },
+    { part: 'side_l', severity: 'high', status: 'open' },
+    { part: 'hood', severity: 'mid', status: 'open' },
+    { part: 'rear', severity: 'high', status: 'fixed' },
+  ];
+  const st = L.partStatus(issues);
+  assert.deepEqual(st.side_l, { count: 2, severity: 'high' });
+  assert.deepEqual(st.hood, { count: 1, severity: 'mid' });
+  assert.equal(st.rear, undefined);
+});
+
+test('sortIssues: 未対応 → 緊急度 → 新しい順', () => {
+  const sorted = L.sortIssues([
+    { id: 'a', status: 'fixed', severity: 'high', reportedAt: '2026-10-10' },
+    { id: 'b', status: 'open', severity: 'low', reportedAt: '2026-10-17' },
+    { id: 'c', status: 'open', severity: 'high', reportedAt: '2026-10-01' },
+    { id: 'd', status: 'open', severity: 'high', reportedAt: '2026-10-15' },
+  ]);
+  assert.deepEqual(sorted.map((i) => i.id), ['d', 'c', 'b', 'a']);
+});
+
+test('validateIssue', () => {
+  assert.deepEqual(L.validateIssue({ vehicleId: 'v', part: 'hood', severity: 'mid', title: 'x', reportedAt: '2026-10-18', status: 'open' }), []);
+  assert.equal(L.validateIssue({ vehicleId: '', part: 'nope', severity: 'z', title: '', reportedAt: '' }).length, 5);
+});

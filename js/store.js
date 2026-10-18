@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS, uid, nowISO } from './logic.js';
 const KEY = 'fleet.v1';
 
 function emptyState() {
-  return { version: 1, vehicles: [], records: [], settings: { ...DEFAULT_SETTINGS } };
+  return { version: 1, vehicles: [], records: [], issues: [], settings: { ...DEFAULT_SETTINGS } };
 }
 
 function normalize(raw) {
@@ -14,6 +14,7 @@ function normalize(raw) {
   if (!raw || typeof raw !== 'object') return s;
   s.vehicles = Array.isArray(raw.vehicles) ? raw.vehicles : [];
   s.records = Array.isArray(raw.records) ? raw.records : [];
+  s.issues = Array.isArray(raw.issues) ? raw.issues : [];
   s.settings = { ...DEFAULT_SETTINGS, ...(raw.settings || {}) };
   if (!Array.isArray(s.settings.bases) || s.settings.bases.length === 0) s.settings.bases = [...DEFAULT_SETTINGS.bases];
   if (!Array.isArray(s.settings.types) || s.settings.types.length === 0) s.settings.types = [...DEFAULT_SETTINGS.types];
@@ -68,6 +69,7 @@ export function upsertVehicle(input) {
 export function removeVehicle(id) {
   state.vehicles = state.vehicles.filter((v) => v.id !== id);
   state.records = state.records.filter((r) => r.vehicleId !== id);
+  state.issues = state.issues.filter((i) => i.vehicleId !== id);
   persist();
 }
 
@@ -97,6 +99,29 @@ export function upsertRecord(input) {
 
 export function removeRecord(id) {
   state.records = state.records.filter((r) => r.id !== id);
+  persist();
+}
+
+export function issuesOf(vehicleId) {
+  return state.issues.filter((i) => i.vehicleId === vehicleId);
+}
+
+export function upsertIssue(input) {
+  const now = nowISO();
+  const i = state.issues.findIndex((x) => x.id === input.id);
+  let id = input.id;
+  if (i >= 0) {
+    state.issues[i] = { ...state.issues[i], ...input, updatedAt: now };
+  } else {
+    id = input.id || uid();
+    state.issues.push({ ...input, id, createdAt: now, updatedAt: now });
+  }
+  persist();
+  return id;
+}
+
+export function removeIssue(id) {
+  state.issues = state.issues.filter((i) => i.id !== id);
   persist();
 }
 

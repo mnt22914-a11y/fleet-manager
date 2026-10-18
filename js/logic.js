@@ -318,3 +318,76 @@ export function uid() {
 export function nowISO() {
   return new Date().toISOString();
 }
+
+// ---- 車体の部位と異常 ----
+
+/** 上から見た車の図の部位。spot があるものは図の上に描き、ないものは図の下のチップで表す。 */
+export const PARTS = [
+  { id: 'front_bumper', label: 'フロントバンパー', short: '前バンパー', spot: { x: 70, y: 18, w: 160, h: 24, rx: 12 } },
+  { id: 'hood', label: 'ボンネット・エンジンルーム', short: 'エンジン', spot: { x: 70, y: 42, w: 160, h: 70, rx: 6 } },
+  { id: 'windshield', label: 'フロントガラス・ワイパー', short: 'ガラス', spot: { x: 80, y: 112, w: 140, h: 30, rx: 6 } },
+  { id: 'cabin', label: '運転席・室内(エアコン等)', short: '運転席', spot: { x: 70, y: 142, w: 160, h: 90, rx: 6 } },
+  { id: 'cargo', label: '荷室・荷台', short: '荷室', spot: { x: 70, y: 232, w: 160, h: 170, rx: 6 } },
+  { id: 'rear', label: 'リアドア・テールランプ・後バンパー', short: '後部', spot: { x: 70, y: 402, w: 160, h: 40, rx: 12 } },
+  { id: 'side_l', label: '左側面(ドア・ボディ)', short: '左側面', spot: { x: 58, y: 150, w: 12, h: 245, rx: 4 } },
+  { id: 'side_r', label: '右側面(ドア・ボディ)', short: '右側面', spot: { x: 230, y: 150, w: 12, h: 245, rx: 4 } },
+  { id: 'mirror_l', label: '左ミラー', short: '左ミラー', spot: { x: 44, y: 118, w: 16, h: 14, rx: 4 } },
+  { id: 'mirror_r', label: '右ミラー', short: '右ミラー', spot: { x: 240, y: 118, w: 16, h: 14, rx: 4 } },
+  { id: 'wheel_fl', label: '左前タイヤ・ブレーキ', short: '左前', spot: { x: 30, y: 136, w: 26, h: 54, rx: 9 } },
+  { id: 'wheel_fr', label: '右前タイヤ・ブレーキ', short: '右前', spot: { x: 244, y: 136, w: 26, h: 54, rx: 9 } },
+  { id: 'wheel_rl', label: '左後タイヤ・ブレーキ', short: '左後', spot: { x: 30, y: 330, w: 26, h: 54, rx: 9 } },
+  { id: 'wheel_rr', label: '右後タイヤ・ブレーキ', short: '右後', spot: { x: 244, y: 330, w: 26, h: 54, rx: 9 } },
+  { id: 'battery', label: 'バッテリー・電装', short: '電装', spot: null },
+  { id: 'underbody', label: '下回り・マフラー・足回り', short: '下回り', spot: null },
+  { id: 'lights', label: 'ランプ類', short: 'ランプ', spot: null },
+  { id: 'other', label: 'その他', short: 'その他', spot: null },
+];
+
+export const PART_BY_ID = Object.fromEntries(PARTS.map((p) => [p.id, p]));
+
+export const SEVERITY = {
+  high: { label: '至急', order: 0 },   // 走行に支障がある
+  mid: { label: '早めに', order: 1 },  // 近いうちに直す
+  low: { label: '様子見', order: 2 },  // 記録しておく
+};
+
+export function partLabel(id) {
+  return PART_BY_ID[id]?.label || id || '部位未設定';
+}
+
+export function sortIssues(issues) {
+  return [...issues].sort((a, b) => {
+    if (a.status !== b.status) return a.status === 'open' ? -1 : 1;
+    const s = (SEVERITY[a.severity]?.order ?? 9) - (SEVERITY[b.severity]?.order ?? 9);
+    if (s !== 0) return s;
+    return (b.reportedAt || '').localeCompare(a.reportedAt || '');
+  });
+}
+
+export function openIssues(issues, vehicleId) {
+  return issues.filter((i) => i.status === 'open' && (!vehicleId || i.vehicleId === vehicleId));
+}
+
+/** 部位ごとの「いちばん重い未対応の異常」と件数。図の色分けに使う。 */
+export function partStatus(issues) {
+  const map = {};
+  for (const i of issues) {
+    if (i.status !== 'open') continue;
+    const cur = map[i.part] || { count: 0, severity: null };
+    cur.count++;
+    if (!cur.severity || SEVERITY[i.severity].order < SEVERITY[cur.severity].order) cur.severity = i.severity;
+    map[i.part] = cur;
+  }
+  return map;
+}
+
+export function validateIssue(i) {
+  const errors = [];
+  if (!i.vehicleId) errors.push('車両を選んでください');
+  if (!PART_BY_ID[i.part]) errors.push('部位を選んでください');
+  if (!SEVERITY[i.severity]) errors.push('緊急度を選んでください');
+  if (!i.title?.trim()) errors.push('異常の内容を入力してください');
+  if (!isValidDate(i.reportedAt)) errors.push('発見日を入力してください');
+  if (i.status === 'fixed' && i.fixedAt && !isValidDate(i.fixedAt)) errors.push('対応日の日付が正しくありません');
+  return errors;
+}

@@ -12,6 +12,7 @@ const $toast = document.getElementById('toast');
 const ui = {
   vehicles: { q: '', base: '', status: '', onlyAlert: false, sortKey: 'code', sortDir: 'asc' },
   maintenance: { q: '', ym: '', vehicleId: '', type: '' },
+  detail: { part: '' },
 };
 
 // ---- ユーティリティ ----
@@ -44,6 +45,10 @@ function vehicleLabel(v) {
 
 function badgeLevel(level) {
   return `<span class="badge ${level}">${L.LEVEL_LABEL[level]}</span>`;
+}
+
+function badgeSeverity(sev) {
+  return `<span class="badge plain sev-${sev}">${L.SEVERITY[sev]?.label || sev}</span>`;
 }
 
 function badgeStatus(status) {
@@ -103,7 +108,8 @@ function render() {
 // ---- ダッシュボード ----
 
 function renderHome(state, alerts, today) {
-  const { vehicles, records, settings } = state;
+  const { vehicles, records, settings, issues } = state;
+  const openIssues = L.sortIssues(L.openIssues(issues));
   if (vehicles.length === 0) {
     return `
       <div class="page-head"><div><h1>ダッシュボード</h1><p class="sub">${L.fmtDate(today)}</p></div></div>
@@ -164,6 +170,12 @@ function renderHome(state, alerts, today) {
       </div>
       <div class="stack">
         <div class="card">
+          <div class="card-head"><h2>未対応の異常</h2><span class="muted">${openIssues.length} 件</span></div>
+          <div class="card-body" style="padding-top:4px;padding-bottom:4px">
+            ${openIssues.length === 0 ? '<div class="empty">未対応の異常はありません</div>' : `<div class="issue-list">${openIssues.slice(0, 6).map((i) => issueItem(i, { showVehicle: true })).join('')}</div>${openIssues.length > 6 ? `<div class="muted" style="font-size:12px;padding:8px 0">ほか ${openIssues.length - 6} 件</div>` : ''}`}
+          </div>
+        </div>
+        <div class="card">
           <div class="card-head"><h2>月別の整備費</h2><span class="muted">直近 6 か月</span></div>
           <div class="card-body">
             <div class="bars">
@@ -185,8 +197,9 @@ function renderHome(state, alerts, today) {
 // ---- 車両台帳 ----
 
 function renderVehicles(state, today) {
-  const { vehicles, records, settings } = state;
+  const { vehicles, records, settings, issues } = state;
   const u = ui.vehicles;
+  const issueStatus = new Map(vehicles.map((v) => [v.id, L.partStatus(issues.filter((i) => i.vehicleId === v.id))]));
   let list = L.filterVehicles(vehicles, { q: u.q, base: u.base, status: u.status === '__all' || u.status === '' ? '' : u.status });
   if (u.status === '') list = list.filter((v) => v.status !== 'retired');
   const withLevel = list.map((v) => ({ ...v, _level: L.vehicleLevel(v, records, settings, today), _levelOrder: L.LEVEL_ORDER[L.vehicleLevel(v, records, settings, today)] }));
@@ -227,6 +240,7 @@ function renderVehicles(state, today) {
           ${th('model', '車種')}
           ${th('base', '拠点')}
           ${th('status', 'ステータス')}
+          <th>異常</th>
           ${th('inspectionExpiry', '車検満了')}
           ${th('jibaisekiExpiry', '自賠責')}
           ${th('insuranceExpiry', '任意保険')}
@@ -240,6 +254,7 @@ function renderVehicles(state, today) {
             <td><div>${esc(v.model || '—')}</div><div class="secondary">${esc(v.maker || '')}</div></td>
             <td class="nowrap">${esc(v.base || '—')}</td>
             <td>${badgeStatus(v.status)}</td>
+            <td>${(() => { const st = Object.values(issueStatus.get(v.id) || {}); if (!st.length) return '<span class="muted">—</span>'; const n = st.reduce((a, x) => a + x.count, 0); const sev = st.map((x) => x.severity).sort((a, b) => L.SEVERITY[a].order - L.SEVERITY[b].order)[0]; return `<span class="badge plain sev-${sev}">${n} 件</span>`; })()}</td>
             <td>${deadlineCell(v.inspectionExpiry, settings, today)}</td>
             <td>${deadlineCell(v.jibaisekiExpiry, settings, today)}</td>
             <td>${deadlineCell(v.insuranceExpiry, settings, today)}</td>
@@ -260,6 +275,7 @@ function renderVehicleDetail(state, id, today) {
     return `<a class="back" href="#/vehicles">← 車両台帳へ</a><div class="card"><div class="empty"><strong>車両が見つかりません</strong>削除された可能性があります。</div></div>`;
   }
   const recs = store.recordsOf(v.id);
+  const issues = store.issuesOf(v.id);
   const alerts = L.sortAlerts(L.vehicleAlerts(v, records, settings, today));
   const nextList = L.latestByType(recs).filter((r) => r.nextDate || r.nextOdometer);
   const thisYear = today.slice(0, 4);
@@ -291,6 +307,13 @@ function renderVehicleDetail(state, id, today) {
         ${tile('車検満了日', v.inspectionExpiry)}
         ${tile('自賠責満了日', v.jibaisekiExpiry)}
         ${tile('任意保険満了日' + (v.insuranceCompany ? '(' + esc(v.insuranceCompany) + ')' : ''), v.insuranceExpiry)}
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>車体の状態</h2><span class="muted">${L.openIssues(issues).length ? `未対応の異常 ${L.openIssues(issues).length} 件` : '未対応の異常はありません'}</span></div>
+        <div class="card-body body-wrap">
+          ${renderDiagram(issues, ui.detail.part)}
+          ${renderIssuePanel(v, issues, ui.detail.part, today)}
+        </div>
       </div>
       <div class="grid grid-main">
         <div class="card">
@@ -356,6 +379,61 @@ function recordRow(r, vehicle) {
     <td class="nowrap muted" style="font-size:12.5px">${next || '—'}</td>
     <td class="right"><button class="btn small ghost" data-action="edit-record" data-id="${esc(r.id)}">編集</button></td>
   </tr>`;
+}
+
+// ---- 車体の図と異常 ----
+
+function renderDiagram(issues, selected) {
+  const status = L.partStatus(issues);
+  const onBody = L.PARTS.filter((p) => p.spot);
+  const offBody = L.PARTS.filter((p) => !p.spot);
+  const shapes = onBody.map((p) => {
+    const st = status[p.id];
+    const cls = ['part', p.id.startsWith('wheel') ? 'wheel' : '', st ? `has-issue sev-${st.severity}` : '', selected === p.id ? 'selected' : ''].filter(Boolean).join(' ');
+    const { x, y, w, h, rx } = p.spot;
+    const cx = x + w / 2, cy = y + h / 2;
+    const label = w >= 100 ? `<text class="plabel" x="${cx}" y="${st ? cy + 24 : cy + 4}">${esc(p.short)}</text>` : '';
+    const marker = st ? `<g class="marker" transform="translate(${cx} ${cy})"><circle class="ring" r="9"/><circle class="ring ring-2" r="9"/><circle class="dot" r="9"/><text y="3.5">${st.count}</text></g>` : '';
+    return `<g class="${cls}" data-action="select-part" data-part="${p.id}"><title>${esc(p.label)}</title><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"/>${label}${marker}</g>`;
+  });
+  const chips = offBody.map((p) => {
+    const st = status[p.id];
+    return `<button type="button" class="part-chip ${st ? `sev-${st.severity}` : ''} ${selected === p.id ? 'selected' : ''}" data-action="select-part" data-part="${p.id}">${esc(p.short)}${st ? ` <b>${st.count}</b>` : ''}</button>`;
+  });
+  return `<div class="diagram">
+    <svg viewBox="20 0 260 460" role="img" aria-label="車両の上面図">
+      <rect class="body-shadow" x="64" y="12" width="172" height="436" rx="26"/>
+      <text class="dir" x="150" y="8">▲ 前</text>
+      ${shapes.join('')}
+    </svg>
+    <div class="part-chips">${chips.join('')}</div>
+    <p class="muted" style="font-size:11.5px;text-align:center;margin-top:8px">部位をクリックすると、その部位の異常だけを表示します</p>
+  </div>`;
+}
+
+function issueItem(i, { showVehicle = false, showPart = true } = {}) {
+  const v = showVehicle ? store.getVehicle(i.vehicleId) : null;
+  const meta = [showVehicle ? esc(vehicleLabel(v)) : '', showPart ? esc(L.partLabel(i.part)) : '', `発見 ${L.fmtDate(i.reportedAt)}`, i.status === 'fixed' ? `対応 ${L.fmtDate(i.fixedAt)}` : ''].filter(Boolean).join(' ・ ');
+  const action = showVehicle ? `data-action="open-vehicle-part" data-id="${esc(i.vehicleId)}" data-part="${esc(i.part)}"` : `data-action="edit-issue" data-id="${esc(i.id)}"`;
+  return `<div class="issue-item ${i.status}" ${action}>
+    <div><div class="t">${badgeSeverity(i.severity)} ${esc(i.title)}</div>${i.detail ? `<div class="d">${esc(i.detail)}</div>` : ''}<div class="m">${meta}</div></div>
+    ${i.status === 'open' && !showVehicle ? `<div><button class="btn small" data-action="fix-issue" data-id="${esc(i.id)}">対応済みにする</button></div>` : ''}
+  </div>`;
+}
+
+function renderIssuePanel(v, issues, selected, today) {
+  const list = L.sortIssues(selected ? issues.filter((i) => i.part === selected) : issues);
+  const open = list.filter((i) => i.status === 'open');
+  const fixed = list.filter((i) => i.status === 'fixed');
+  const title = selected ? esc(L.partLabel(selected)) : 'すべての部位';
+  return `<div class="issue-panel">
+    <div class="issue-panel-head">
+      <div><h3>${title}</h3>${selected ? '<button class="btn ghost small" data-action="select-part" data-part="">すべて表示</button>' : ''}</div>
+      <button class="btn primary small" data-action="add-issue" data-vehicle="${esc(v.id)}" data-part="${esc(selected)}">＋ 異常を登録</button>
+    </div>
+    ${open.length === 0 ? `<div class="empty" style="padding:24px 8px"><strong>未対応の異常はありません</strong>${selected ? 'この部位は問題ありません。' : '異常を見つけたら「＋ 異常を登録」で部位ごとに記録できます。'}</div>` : `<div class="issue-list">${open.map((i) => issueItem(i, { showPart: !selected })).join('')}</div>`}
+    ${fixed.length ? `<details class="issue-fixed"><summary>対応済み ${fixed.length} 件</summary><div class="issue-list">${fixed.map((i) => issueItem(i, { showPart: !selected })).join('')}</div></details>` : ''}
+  </div>`;
 }
 
 // ---- 整備記録 ----
@@ -662,6 +740,60 @@ function openRecordForm(existing, presetVehicleId) {
   syncExtra();
 }
 
+function openIssueForm(existing, presetVehicleId, presetPart) {
+  const state = store.getState();
+  const i = existing || { vehicleId: presetVehicleId || '', part: presetPart || '', severity: 'mid', status: 'open', reportedAt: L.todayISO() };
+  const isNew = !existing;
+  const vehicles = L.sortBy(state.vehicles.filter((v) => v.status !== 'retired' || v.id === i.vehicleId), 'code');
+  const lockVehicle = Boolean(presetVehicleId) || !isNew;
+  const html = `
+    <form>
+      <div class="dlg-head"><h2>${isNew ? '異常を登録' : '異常を編集'}</h2><button type="button" class="btn ghost small" data-dlg="cancel">閉じる</button></div>
+      <div class="dlg-body">
+        <div class="form-errors hidden"></div>
+        <input type="hidden" name="id" value="${esc(i.id || '')}">
+        <div class="form-grid">
+          ${field('vehicleId', '車両', `<select id="f-vehicleId" name="vehicleId" ${lockVehicle ? 'disabled' : ''} required>${!i.vehicleId ? opt('', '選んでください', true) : ''}${vehicles.map((v) => opt(v.id, `${vehicleLabel(v)}(${v.plate})`, v.id === i.vehicleId)).join('')}</select>${lockVehicle ? `<input type="hidden" name="vehicleId" value="${esc(i.vehicleId)}">` : ''}`, { required: true })}
+          ${field('part', '部位', `<select id="f-part" name="part" required>${!i.part ? opt('', '選んでください', true) : ''}${L.PARTS.map((p) => opt(p.id, p.label, p.id === i.part)).join('')}</select>`, { required: true })}
+          ${field('severity', '緊急度', `<div class="seg">${Object.entries(L.SEVERITY).map(([k, v]) => `<label class="seg-item sev-${k}"><input type="radio" name="severity" value="${k}" ${i.severity === k ? 'checked' : ''}>${v.label}</label>`).join('')}</div>`, { required: true, hint: '至急 = 走行に支障 / 早めに = 近いうちに修理 / 様子見 = 記録のみ' })}
+          ${field('reportedAt', '発見日', date('reportedAt', i.reportedAt, 'required'), { required: true })}
+          ${field('title', '異常の内容', text('title', i.title, 'placeholder="左スライドドアが閉まりにくい" required'), { required: true, full: true })}
+          ${field('detail', '詳しく(任意)', `<textarea id="f-detail" name="detail" placeholder="いつから、どんな状況で、誰が気づいたか">${esc(i.detail || '')}</textarea>`, { full: true })}
+          ${isNew ? '' : `${field('status', '状態', `<select id="f-status" name="status">${opt('open', '未対応', i.status === 'open')}${opt('fixed', '対応済み', i.status === 'fixed')}</select>`)}
+          ${field('fixedAt', '対応日', date('fixedAt', i.fixedAt || ''), { hint: '対応済みにするときに入れます' })}`}
+        </div>
+      </div>
+      <div class="dlg-foot">
+        ${isNew ? '' : '<button type="button" class="btn danger" data-dlg="delete">この異常を削除</button>'}
+        <div class="right-group"><button type="button" class="btn" data-dlg="cancel">キャンセル</button><button type="submit" class="btn primary">${isNew ? '登録する' : '保存する'}</button></div>
+      </div>
+    </form>`;
+  openDialog(html, (d) => {
+    const issue = {
+      id: d.id || undefined,
+      vehicleId: d.vehicleId || i.vehicleId,
+      part: d.part,
+      severity: d.severity,
+      title: (d.title || '').trim(),
+      detail: (d.detail || '').trim(),
+      reportedAt: d.reportedAt,
+      status: d.status || 'open',
+      fixedAt: d.status === 'fixed' ? (d.fixedAt || L.todayISO()) : '',
+    };
+    const errors = L.validateIssue(issue);
+    if (errors.length) return errors;
+    store.upsertIssue(issue);
+    ui.detail.part = issue.part;
+    toast(isNew ? '異常を登録しました' : '保存しました');
+  }, (action, close) => {
+    if (action === 'delete' && confirm('この異常の記録を削除します。元に戻せません。')) {
+      store.removeIssue(i.id);
+      toast('削除しました');
+      close();
+    }
+  });
+}
+
 // ---- CSV ----
 
 const VEHICLE_COLUMNS = [
@@ -718,7 +850,25 @@ document.addEventListener('click', (e) => {
       }
       break;
     }
-    case 'open-vehicle': location.hash = `#/vehicles/${encodeURIComponent(id)}`; break;
+    case 'open-vehicle': ui.detail.part = ''; location.hash = `#/vehicles/${encodeURIComponent(id)}`; break;
+    case 'open-vehicle-part': ui.detail.part = el.dataset.part || ''; location.hash = `#/vehicles/${encodeURIComponent(id)}`; break;
+    case 'select-part': {
+      const part = el.dataset.part || '';
+      ui.detail.part = ui.detail.part === part ? '' : part;
+      render();
+      break;
+    }
+    case 'add-issue': openIssueForm(null, el.dataset.vehicle || '', el.dataset.part || ''); break;
+    case 'edit-issue': {
+      const i = store.getState().issues.find((x) => x.id === id);
+      if (i) openIssueForm(i);
+      break;
+    }
+    case 'fix-issue': {
+      store.upsertIssue({ id, status: 'fixed', fixedAt: L.todayISO() });
+      toast('対応済みにしました');
+      break;
+    }
     case 'add-record': openRecordForm(null, el.dataset.vehicle || ui.maintenance.vehicleId || ''); break;
     case 'edit-record': {
       e.stopPropagation();
