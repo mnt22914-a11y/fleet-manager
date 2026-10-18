@@ -7,8 +7,9 @@
 
 - **ダッシュボード**: 車両数、要対応・注意のアラート件数、今月の整備費。車検・自賠責・任意保険・次回整備の期限を近い順に一覧
 - **車両台帳**: **駐車場ビュー**(拠点ごとの駐車区画に軽バンが並び、状態の色・異常件数・期限アラートが乗る)と一覧表を切り替え。検索、拠点/ステータスで絞り込み、列で並び替え、CSV 書き出し
-- **車両詳細**: 期限タイル、**軽バンの上面図で部位ごとの異常を表示**、車両情報、次回整備の目安、整備履歴、整備費の集計
-- **異常の記録**: 部位(前バンパー・エンジン・各タイヤ・側面・荷室…)と緊急度(至急/早めに/様子見)を付けて登録。異常のある部位は図の上で色が付き脈打つ。部位をクリックすると絞り込み。対応済みにすると消える
+- **車両詳細**: 期限タイル、**軽バンの 3D モデル**(ドラッグ/スワイプで回転、ピンチ/ホイールで拡大、部位をタップで選択。異常のある部位は赤く脈打つ)、車両情報、次回整備の目安、整備履歴、整備費の集計。3D が使えない環境(オフライン等)では上面図に切り替わる
+- **異常の記録**: 部位(前バンパー・エンジン・各タイヤ・スライドドア・荷室…)と緊急度(至急/早めに/様子見)を付けて登録。**写真を添付できる**(縮小して IndexedDB に保存、タップで拡大)。異常のある部位は 3D/図の上で赤く表示。部位をクリックすると絞り込み。対応済みにすると消える
+- **整備記録にも写真**を添付できる。バックアップ JSON には写真も含まれる
 - **整備記録**: いつ・何を・どこで・いくらで・何 km のときに。次回の目安(日付 or 距離)を入れるとアラートに出る。「車検」の記録からは車検満了日を台帳に反映できる
 - **設定**: アラート基準(日数・距離)、拠点、整備種別、JSON バックアップ/復元、サンプルデータ、全削除
 
@@ -32,6 +33,8 @@ css/style.css         見た目(PC 優先、スマホは下タブ)
 js/logic.js           期限判定・集計・検証・CSV などの純粋関数(テスト対象)
 js/store.js           保存層。いまは localStorage。将来 Supabase に差し替える想定
 js/sample.js          固定シードのサンプルデータ
+js/van3d.js           Three.js(CDN, r128)で軽バンを組み立て、回転・タップ選択・赤表示をする
+js/photos.js          写真の縮小と IndexedDB 保存。起動時に読み込み、url(id) で参照
 js/app.js             画面の描画とイベント(ハッシュルーティング、<dialog> フォーム)
 sw.js                 オフライン用の最小キャッシュ
 tests/logic.test.mjs  node --test
@@ -52,8 +55,9 @@ vehicle = { id, code, name, plate, maker, model, modelCode, vin, firstRegistrati
             odometer, odometerDate, note, createdAt, updatedAt }
 record  = { id, vehicleId, date, type, title, detail, vendor, cost, odometer,
             nextDate, nextOdometer, note, createdAt, updatedAt }
-issue   = { id, vehicleId, part, severity: 'high'|'mid'|'low', title, detail,
+issue   = { id, vehicleId, part, severity: 'high'|'mid'|'low', title, detail, photos: [photoId],
             reportedAt, status: 'open'|'fixed', fixedAt, createdAt, updatedAt }
+// record にも photos: [photoId]。写真本体は IndexedDB(fleet-photos)に Blob で保存
 settings = { alertDays, warnDays, odometerWarnKm, bases: [], types: [], companyName }
 ```
 

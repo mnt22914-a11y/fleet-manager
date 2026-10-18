@@ -9,6 +9,9 @@
 - UI 文言は日本語。利用者は事務所の管理者(PC)なので、テーブルと一覧性を優先し、スマホは崩れなければよい
 - 既存データの形を変えるときは store.js の normalize() で古い形を読めるようにする
 
+- 3D は Three.js r128(cdnjs)を index.html で読み、js/van3d.js で組み立てる。window.THREE が無ければ 2D 図に落ちる
+- 写真は js/photos.js(IndexedDB)。localStorage には ID だけ入れる
+
 ## 確認の仕方
 - `python3 -m http.server 8080` で開き、設定 → サンプルデータを入れて全画面を目で見る
 - `node --test tests/*.test.mjs` が通ること

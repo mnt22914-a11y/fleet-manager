@@ -3,6 +3,8 @@
 import * as store from './store.js';
 import * as L from './logic.js';
 import { buildSample } from './sample.js';
+import * as photos from './photos.js';
+import { mountVan3D } from './van3d.js';
 
 const $app = document.getElementById('app');
 const $dialogRoot = document.getElementById('dialog-root');
@@ -12,7 +14,7 @@ const $toast = document.getElementById('toast');
 const ui = {
   vehicles: { q: '', base: '', status: '', onlyAlert: false, sortKey: 'code', sortDir: 'asc', view: 'lot' },
   maintenance: { q: '', ym: '', vehicleId: '', type: '' },
-  detail: { part: '' },
+  detail: { part: '', view: '3d' },
 };
 
 // ---- ユーティリティ ----
@@ -78,7 +80,10 @@ function parseRoute() {
   return { name: 'home' };
 }
 
+let van3d = null;
+
 function render() {
+  if (van3d) { van3d.destroy(); van3d = null; }
   const route = parseRoute();
   const state = store.getState();
   const today = L.todayISO();
@@ -103,6 +108,16 @@ function render() {
   }
   $app.innerHTML = html;
   $app.scrollTop = 0;
+  const holder = $app.querySelector('#van3d');
+  if (holder && route.name === 'vehicle') {
+    const issues = store.issuesOf(route.id);
+    van3d = mountVan3D(holder, {
+      status: L.partStatus(issues),
+      selected: ui.detail.part,
+      onSelect: (part) => { ui.detail.part = ui.detail.part === part ? '' : part; render(); },
+    });
+    if (!van3d) { ui.detail.view = '2d'; render(); }
+  }
 }
 
 // ---- ダッシュボード ----
@@ -380,7 +395,16 @@ function renderVehicleDetail(state, id, today) {
       <div class="card">
         <div class="card-head"><h2>車体の状態</h2><span class="muted">${L.openIssues(issues).length ? `未対応の異常 ${L.openIssues(issues).length} 件` : '未対応の異常はありません'}</span></div>
         <div class="card-body body-wrap">
-          ${renderDiagram(issues, ui.detail.part)}
+          <div class="diagram-col">
+            <div class="diagram-tools">
+              <div class="seg view-seg">
+                <button type="button" class="seg-btn ${ui.detail.view === '3d' ? 'on' : ''}" data-action="set-detail-view" data-view="3d">3D</button>
+                <button type="button" class="seg-btn ${ui.detail.view === '2d' ? 'on' : ''}" data-action="set-detail-view" data-view="2d">図</button>
+              </div>
+              <span class="muted" style="font-size:11.5px">${ui.detail.view === '3d' ? 'ドラッグで回転 ・ ピンチ/ホイールで拡大 ・ 部位をタップで選択' : '部位をクリックすると、その部位の異常だけを表示します'}</span>
+            </div>
+            ${ui.detail.view === '3d' && globalThis.THREE ? `<div id="van3d" class="van3d"></div>${renderPartChips(L.partStatus(issues), ui.detail.part)}` : renderDiagram(issues, ui.detail.part)}
+          </div>
           ${renderIssuePanel(v, issues, ui.detail.part, today)}
         </div>
       </div>
@@ -441,7 +465,7 @@ function recordRow(r, vehicle) {
     <td class="nowrap num">${L.fmtDate(r.date)}</td>
     ${vehicle === null ? '' : `<td><div class="primary">${esc(vehicle?.code || '')}</div><div class="secondary">${esc(vehicle?.plate || '(削除された車両)')}</div></td>`}
     <td class="nowrap"><span class="badge plain">${esc(r.type)}</span></td>
-    <td><div>${esc(r.title && r.title !== r.type ? r.title : '')}</div>${r.detail ? `<div class="secondary">${esc(r.detail)}</div>` : ''}</td>
+    <td><div>${esc(r.title && r.title !== r.type ? r.title : '')}${r.photos?.length ? ` <span class="muted" title="写真 ${r.photos.length} 枚">📷${r.photos.length}</span>` : ''}</div>${r.detail ? `<div class="secondary">${esc(r.detail)}</div>` : ''}</td>
     <td>${esc(r.vendor || '—')}</td>
     <td class="right num nowrap">${L.fmtKm(r.odometer)}</td>
     <td class="right num nowrap">${L.fmtYen(r.cost)}</td>
@@ -455,7 +479,6 @@ function recordRow(r, vehicle) {
 function renderDiagram(issues, selected) {
   const status = L.partStatus(issues);
   const onBody = L.PARTS.filter((p) => p.spot);
-  const offBody = L.PARTS.filter((p) => !p.spot);
   const shapes = onBody.map((p) => {
     const st = status[p.id];
     const cls = ['part', p.id.startsWith('wheel') ? 'wheel' : '', st ? `has-issue sev-${st.severity}` : '', selected === p.id ? 'selected' : ''].filter(Boolean).join(' ');
@@ -465,19 +488,22 @@ function renderDiagram(issues, selected) {
     const marker = st ? `<g class="marker" transform="translate(${cx} ${cy})"><circle class="ring" r="9"/><circle class="ring ring-2" r="9"/><circle class="dot" r="9"/><text y="3.5">${st.count}</text></g>` : '';
     return `<g class="${cls}" data-action="select-part" data-part="${p.id}"><title>${esc(p.label)}</title><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"/>${label}${marker}</g>`;
   });
-  const chips = offBody.map((p) => {
-    const st = status[p.id];
-    return `<button type="button" class="part-chip ${st ? `sev-${st.severity}` : ''} ${selected === p.id ? 'selected' : ''}" data-action="select-part" data-part="${p.id}">${esc(p.short)}${st ? ` <b>${st.count}</b>` : ''}</button>`;
-  });
   return `<div class="diagram">
     <svg viewBox="20 0 260 460" role="img" aria-label="車両の上面図">
       <path class="body-shadow" d="M 104 8 H 196 Q 236 8 236 48 V 420 Q 236 448 208 448 H 92 Q 64 448 64 420 V 48 Q 64 8 104 8 Z"/>
       <text class="dir" x="150" y="4">▲ 前</text>
       ${shapes.join('')}
     </svg>
-    <div class="part-chips">${chips.join('')}</div>
-    <p class="muted" style="font-size:11.5px;text-align:center;margin-top:8px">部位をクリックすると、その部位の異常だけを表示します</p>
+    ${renderPartChips(status, selected)}
   </div>`;
+}
+
+function renderPartChips(status, selected) {
+  const chips = L.PARTS.filter((p) => !p.spot).map((p) => {
+    const st = status[p.id];
+    return `<button type="button" class="part-chip ${st ? `sev-${st.severity}` : ''} ${selected === p.id ? 'selected' : ''}" data-action="select-part" data-part="${p.id}">${esc(p.short)}${st ? ` <b>${st.count}</b>` : ''}</button>`;
+  });
+  return `<div class="part-chips">${chips.join('')}</div><p class="muted" style="font-size:11px;text-align:center;margin-top:6px">車体に描けない部位。赤は未対応の異常あり</p>`;
 }
 
 function issueItem(i, { showVehicle = false, showPart = true } = {}) {
@@ -485,7 +511,7 @@ function issueItem(i, { showVehicle = false, showPart = true } = {}) {
   const meta = [showVehicle ? esc(vehicleLabel(v)) : '', showPart ? esc(L.partLabel(i.part)) : '', `発見 ${L.fmtDate(i.reportedAt)}`, i.status === 'fixed' ? `対応 ${L.fmtDate(i.fixedAt)}` : ''].filter(Boolean).join(' ・ ');
   const action = showVehicle ? `data-action="open-vehicle-part" data-id="${esc(i.vehicleId)}" data-part="${esc(i.part)}"` : `data-action="edit-issue" data-id="${esc(i.id)}"`;
   return `<div class="issue-item ${i.status}" ${action}>
-    <div><div class="t">${badgeSeverity(i.severity)} ${esc(i.title)}</div>${i.detail ? `<div class="d">${esc(i.detail)}</div>` : ''}<div class="m">${meta}</div></div>
+    <div><div class="t">${badgeSeverity(i.severity)} ${esc(i.title)}</div>${i.detail ? `<div class="d">${esc(i.detail)}</div>` : ''}<div class="m">${meta}</div>${showVehicle ? '' : photoStrip(i.photos)}</div>
     ${i.status === 'open' && !showVehicle ? `<div><button class="btn small" data-action="fix-issue" data-id="${esc(i.id)}">対応済みにする</button></div>` : ''}
   </div>`;
 }
@@ -615,11 +641,21 @@ function openDialog(html, onSubmit, onAction) {
   const dlg = $dialogRoot.querySelector('dialog');
   const form = dlg.querySelector('form');
   const close = () => { dlg.close(); $dialogRoot.innerHTML = ''; };
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const submitBtn = form.querySelector('button[type=submit]');
+    if (submitBtn?.disabled) return;
     const fd = new FormData(form);
     const data = Object.fromEntries(fd.entries());
-    const errors = onSubmit(data, form);
+    if (submitBtn) submitBtn.disabled = true;
+    let errors;
+    try {
+      errors = await onSubmit(data, form);
+    } catch (err) {
+      errors = [err?.message || '保存に失敗しました'];
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
     if (errors && errors.length) {
       const box = form.querySelector('.form-errors');
       box.innerHTML = `<ul>${errors.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
@@ -738,6 +774,7 @@ function openRecordForm(existing, presetVehicleId) {
             </div>
           </fieldset>
           ${field('detail', '詳細・メモ', `<textarea id="f-detail" name="detail">${esc(r.detail || '')}</textarea>`, { full: true })}
+          ${photoFieldHTML(r.photos || [])}
         </div>
       </div>
       <div class="dlg-foot">
@@ -745,7 +782,8 @@ function openRecordForm(existing, presetVehicleId) {
         <div class="right-group"><button type="button" class="btn" data-dlg="cancel">キャンセル</button><button type="submit" class="btn primary">${isNew ? '記録する' : '保存する'}</button></div>
       </div>
     </form>`;
-  const { form } = openDialog(html, (d) => {
+  let recPhotos;
+  const { form } = openDialog(html, async (d) => {
     const vehicleId = d.vehicleId || r.vehicleId;
     const rec = {
       id: d.id || undefined,
@@ -767,7 +805,9 @@ function openRecordForm(existing, presetVehicleId) {
       if (d.newJibaisekiExpiry && !L.isValidDate(d.newJibaisekiExpiry)) errors.push('新しい自賠責満了日の日付が正しくありません');
     }
     if (errors.length) return errors;
+    rec.photos = await recPhotos.collect();
     store.upsertRecord(rec);
+    await recPhotos.cleanup();
     if (d.type === '車検' && (d.newInspectionExpiry || d.newJibaisekiExpiry)) {
       const v = store.getVehicle(vehicleId);
       if (v) {
@@ -779,13 +819,15 @@ function openRecordForm(existing, presetVehicleId) {
       }
     }
     toast(isNew ? '整備を記録しました' : '保存しました');
-  }, (action, close) => {
+  }, async (action, close) => {
     if (action === 'delete' && confirm('この整備記録を削除します。元に戻せません。')) {
       store.removeRecord(r.id);
+      await photos.removeMany(r.photos);
       toast('削除しました');
       close();
     }
   });
+  recPhotos = attachPhotoField(form, r.photos || []);
 
   // 種別が「車検」のときだけ台帳反映の欄を出し、満了日の候補を入れる
   const typeSel = form.querySelector('#f-type');
@@ -828,6 +870,7 @@ function openIssueForm(existing, presetVehicleId, presetPart) {
           ${field('reportedAt', '発見日', date('reportedAt', i.reportedAt, 'required'), { required: true })}
           ${field('title', '異常の内容', text('title', i.title, 'placeholder="左スライドドアが閉まりにくい" required'), { required: true, full: true })}
           ${field('detail', '詳しく(任意)', `<textarea id="f-detail" name="detail" placeholder="いつから、どんな状況で、誰が気づいたか">${esc(i.detail || '')}</textarea>`, { full: true })}
+          ${photoFieldHTML(i.photos || [])}
           ${isNew ? '' : `${field('status', '状態', `<select id="f-status" name="status">${opt('open', '未対応', i.status === 'open')}${opt('fixed', '対応済み', i.status === 'fixed')}</select>`)}
           ${field('fixedAt', '対応日', date('fixedAt', i.fixedAt || ''), { hint: '対応済みにするときに入れます' })}`}
         </div>
@@ -837,7 +880,8 @@ function openIssueForm(existing, presetVehicleId, presetPart) {
         <div class="right-group"><button type="button" class="btn" data-dlg="cancel">キャンセル</button><button type="submit" class="btn primary">${isNew ? '登録する' : '保存する'}</button></div>
       </div>
     </form>`;
-  openDialog(html, (d) => {
+  let photoField;
+  openDialog(html, async (d) => {
     const issue = {
       id: d.id || undefined,
       vehicleId: d.vehicleId || i.vehicleId,
@@ -851,16 +895,87 @@ function openIssueForm(existing, presetVehicleId, presetPart) {
     };
     const errors = L.validateIssue(issue);
     if (errors.length) return errors;
+    issue.photos = await photoField.collect();
     store.upsertIssue(issue);
+    await photoField.cleanup();
     ui.detail.part = issue.part;
     toast(isNew ? '異常を登録しました' : '保存しました');
-  }, (action, close) => {
+  }, async (action, close) => {
     if (action === 'delete' && confirm('この異常の記録を削除します。元に戻せません。')) {
       store.removeIssue(i.id);
+      await photos.removeMany(i.photos);
       toast('削除しました');
       close();
     }
   });
+  photoField = attachPhotoField($dialogRoot.querySelector('form'), i.photos || []);
+}
+
+// ---- 写真 ----
+
+function photoFieldHTML(ids = []) {
+  return `<div class="field full"><label>写真</label>
+    <div class="photo-grid" data-photo-grid>
+      ${ids.filter((id) => photos.has(id)).map((id) => `<div class="photo-thumb" data-photo-id="${esc(id)}"><img src="${photos.url(id)}" alt=""><button type="button" class="photo-x" data-photo-remove="${esc(id)}" title="外す">×</button></div>`).join('')}
+      <label class="photo-add" title="写真を追加"><input type="file" accept="image/*" multiple hidden data-photo-input><span>＋</span><small>写真を追加</small></label>
+    </div>
+    <div class="hint">長辺 1280px に縮小して、このブラウザに保存します。スマホならカメラでそのまま撮れます</div>
+  </div>`;
+}
+
+/** フォーム内の写真欄を動かす。保存時に collect() を呼ぶと、新しい写真を保存して ID の配列を返す。 */
+function attachPhotoField(form, existing = []) {
+  const grid = form.querySelector('[data-photo-grid]');
+  const input = form.querySelector('[data-photo-input]');
+  const pending = [];          // { file, url, el }
+  const removed = new Set();
+  if (!grid || !input) return { collect: async () => existing, cleanup: async () => {} };
+  input.addEventListener('change', () => {
+    for (const file of input.files || []) {
+      if (!file.type.startsWith('image/')) continue;
+      const url = URL.createObjectURL(file);
+      const el = document.createElement('div');
+      el.className = 'photo-thumb pending';
+      el.innerHTML = `<img src="${url}" alt=""><button type="button" class="photo-x" title="外す">×</button>`;
+      const item = { file, url, el };
+      el.querySelector('button').addEventListener('click', () => { URL.revokeObjectURL(url); el.remove(); item.file = null; });
+      pending.push(item);
+      grid.insertBefore(el, input.closest('.photo-add'));
+    }
+    input.value = '';
+  });
+  grid.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-photo-remove]');
+    if (!btn) return;
+    removed.add(btn.dataset.photoRemove);
+    btn.closest('.photo-thumb').remove();
+  });
+  return {
+    async collect() {
+      const kept = existing.filter((id) => !removed.has(id));
+      for (const item of pending) if (item.file) kept.push(await photos.addFile(item.file));
+      return kept;
+    },
+    async cleanup() {
+      for (const id of removed) await photos.remove(id);
+    },
+  };
+}
+
+function photoStrip(ids = []) {
+  const list = ids.filter((id) => photos.has(id));
+  if (!list.length) return '';
+  return `<div class="issue-photos">${list.map((id) => `<img src="${photos.url(id)}" alt="" data-action="view-photo" data-photo="${esc(id)}">`).join('')}</div>`;
+}
+
+function openLightbox(id) {
+  const u = photos.url(id);
+  if (!u) return;
+  $dialogRoot.innerHTML = `<dialog class="lightbox"><form method="dialog"><img src="${u}" alt=""><button class="btn" type="submit">閉じる</button></form></dialog>`;
+  const dlg = $dialogRoot.querySelector('dialog');
+  dlg.addEventListener('close', () => { $dialogRoot.innerHTML = ''; });
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+  dlg.showModal();
 }
 
 // ---- CSV ----
@@ -913,7 +1028,9 @@ document.addEventListener('click', (e) => {
       if (!v) break;
       const n = store.recordsOf(id).length;
       if (confirm(`${vehicleLabel(v)} を削除します。${n ? `整備記録 ${n} 件も一緒に消えます。` : ''}元に戻せません。`)) {
+        const ids = [...store.recordsOf(id), ...store.issuesOf(id)].flatMap((x) => x.photos || []);
         store.removeVehicle(id);
+        photos.removeMany(ids);
         toast('削除しました');
         location.hash = '#/vehicles';
       }
@@ -954,15 +1071,23 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'set-view': ui.vehicles.view = el.dataset.view; render(); break;
+    case 'set-detail-view': ui.detail.view = el.dataset.view; render(); break;
+    case 'view-photo': openLightbox(el.dataset.photo); break;
     case 'export-vehicles-csv': exportVehiclesCSV(); break;
     case 'export-records-csv': exportRecordsCSV(); break;
     case 'export-json':
-      download(`車両管理バックアップ_${L.todayISO()}.json`, store.exportJSON(), 'application/json');
-      toast('バックアップを書き出しました');
+      toast('書き出しています…');
+      photos.exportAll().then((list) => {
+        const data = JSON.parse(store.exportJSON());
+        data.photos = list;
+        download(`車両管理バックアップ_${L.todayISO()}.json`, JSON.stringify(data), 'application/json');
+        toast(`バックアップを書き出しました(写真 ${list.length} 枚を含む)`);
+      });
       break;
     case 'load-sample': {
       const has = store.getState().vehicles.length > 0;
       if (!has || confirm('今のデータをサンプルデータで上書きします。よろしいですか?')) {
+        photos.clear();
         store.replaceAll(buildSample());
         toast('サンプルデータを入れました');
         location.hash = '#/';
@@ -971,6 +1096,7 @@ document.addEventListener('click', (e) => {
     }
     case 'clear-all':
       if (confirm('このブラウザに保存した車両・整備記録・設定をすべて削除します。元に戻せません。')) {
+        photos.clear();
         store.clearAll();
         toast('すべて削除しました');
         location.hash = '#/';
@@ -1043,13 +1169,18 @@ document.addEventListener('change', (e) => {
     if (!file) return;
     file.text().then((t) => {
       if (!confirm('今のデータをバックアップの内容で上書きします。よろしいですか?')) return;
-      try {
-        store.importJSON(t);
-        toast('バックアップを読み込みました');
-        location.hash = '#/';
-      } catch (err) {
-        toast(err.message || '読み込みに失敗しました', true);
-      }
+      (async () => {
+        try {
+          const raw = JSON.parse(t);
+          await photos.clear();
+          await photos.importAll(raw.photos);
+          store.importJSON(t);
+          toast('バックアップを読み込みました');
+          location.hash = '#/';
+        } catch (err) {
+          toast(err.message || '読み込みに失敗しました', true);
+        }
+      })();
     });
     el.value = '';
   }
@@ -1057,7 +1188,7 @@ document.addEventListener('change', (e) => {
 
 window.addEventListener('hashchange', render);
 store.subscribe(render);
-render();
+photos.init().catch(() => {}).then(render);
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
