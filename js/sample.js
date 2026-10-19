@@ -23,7 +23,8 @@ const MODELS = [
 ];
 const REGIONS = ['品川', '足立', '横浜', '川崎', '千葉', '大宮'];
 const KANA = ['あ', 'い', 'う', 'か', 'き', 'く', 'さ', 'す'];
-const DRIVERS = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '渡辺', '山本', '中村', '小林', '加藤', '吉田', '山田'];
+const DRIVERS = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '渡辺', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '松本', '井上', '木村', '林', '斎藤', '清水', '山口', '森', '池田', '橋本', '石川'];
+const GIVEN = ['太郎', '健一', '大輔', '翔太', '美咲', '直樹', '拓也', '陽子', '和也', '恵'];
 const VENDORS = ['（株）東都モータース', 'オートバックス 環七店', 'いすゞ自動車 首都圏', 'トヨタモビリティ東京', 'タイヤ館 戸田', '自社整備'];
 
 function shift(today, days) {
@@ -63,22 +64,21 @@ export function buildSample(today = todayISO()) {
     const plateCls = m.cls;
     const v = {
       id: uid(),
-      code: `V-${String(i + 1).padStart(3, '0')}`,
-      name: `${m.model.split(' ')[0]} ${i + 1}号車`,
+      driverName: `${DRIVERS[i % DRIVERS.length]} ${pick(GIVEN)}`,
       plate: `${pick(REGIONS)} ${plateCls} ${pick(KANA)} ${String(10 + Math.floor(r() * 89))}-${String(10 + Math.floor(r() * 89))}`,
       maker: m.maker,
-      model: m.model,
       modelCode: '',
-      vin: '',
+      qr: `KV-${String(1000 + i * 37 + Math.floor(r() * 30))}`,
       firstRegistration: firstReg,
       inspectionExpiry: status === 'retired' ? '' : inspection,
       jibaisekiExpiry: status === 'retired' ? '' : jibaiseki,
       insuranceExpiry: status === 'retired' ? '' : insurance,
       insuranceCompany: pick(['東京海上日動', '損保ジャパン', '三井住友海上', 'あいおいニッセイ同和']),
+      insurancePhone: pick(['0120-119-110', '0120-256-110', '0120-258-365', '0120-985-024']),
+      loaner: null,
       base,
       odometer,
       odometerDate: shift(today, -Math.floor(r() * 20)),
-      driver: pick(DRIVERS),
       status,
       note: i === 11 ? 'バンパー破損で入庫中。10/25 出庫予定' : '',
       createdAt: nowISO(),
@@ -131,22 +131,40 @@ export function buildSample(today = todayISO()) {
     });
   }
 
+  // 代車: 修理中の 12 号車は借代車、2 号車(ブレーキ異音で入庫)は休車の 18 号車を自社代車に
+  vehicles[11].loaner = { type: 'rental', since: shift(today, -4), vehicleId: '', plate: '足立 480 れ 12-34', note: '○○レンタカー。10/25 返却予定' };
+  vehicles[2].status = 'repair';
+  vehicles[2].loaner = { type: 'own', since: shift(today, -1), vehicleId: vehicles[17].id, plate: '', note: '' };
+
   // 異常: 部位ごとに未対応のものをいくつか、対応済みも 1 件
   const issues = [];
   const addIssue = (idx, part, severity, title, detail, daysAgo, fixed = false) => issues.push({
     id: uid(), vehicleId: vehicles[idx].id, part, severity, title, detail,
     reportedAt: shift(today, -daysAgo), status: fixed ? 'fixed' : 'open',
     fixedAt: fixed ? shift(today, -Math.max(0, daysAgo - 4)) : '',
+    pins: [], accident: null,
     createdAt: nowISO(), updatedAt: nowISO(),
   });
   addIssue(0, 'side_l', 'mid', '左スライドドアが閉まりにくい', 'レールにゴミが噛んでいる可能性。閉めるときに 2 回押す必要あり', 3);
-  issues[issues.length - 1].pin = { view: 'left', x: 0.62, y: 0.78 };
+  issues[issues.length - 1].pins = [{ view: 'left', x: 0.62, y: 0.78 }];
   addIssue(0, 'wheel_rr', 'low', '右後タイヤの空気が抜けやすい', '週 1 回 20kPa ほど下がる。バルブか釘の可能性', 9);
   addIssue(0, 'lamp_rl', 'low', '左テールランプのナンバー灯が切れている', '', 1);
   addIssue(5, 'lamp_fr', 'mid', '右ヘッドライトの内側が曇っている', '雨の後に水滴が溜まる。パッキン不良の疑い', 4);
-  issues[issues.length - 1].pin = { view: 'front', x: 0.19, y: 0.48 };
-  addIssue(11, 'front_bumper', 'high', 'フロントバンパー破損(接触事故)', '10/14 荷下ろし時にポールへ接触。左角が割れて垂れ下がっている', 4);
-  issues[issues.length - 1].pin = { view: 'front', x: 0.86, y: 0.80 };
+  issues[issues.length - 1].pins = [{ view: 'front', x: 0.19, y: 0.48 }];
+  addIssue(11, 'front_bumper', 'high', 'フロントバンパー破損(接触事故)', '荷下ろし時にポールへ接触。左角が割れて垂れ下がっている', 4);
+  issues[issues.length - 1].pins = [{ view: 'front', x: 0.86, y: 0.80 }, { view: 'left', x: 0.09, y: 0.62 }, { view: 'top', x: 0.12, y: 0.06 }];
+  issues[issues.length - 1].accident = {
+    datetime: `${shift(today, -4)}T10:40`, place: '足立区○○ 2-3 ○○倉庫 搬入口', type: '自損(単独)', police: '綾瀬警察署',
+    driverName: vehicles[11].driverName, plate: vehicles[11].plate, ownDamage: 'フロントバンパー左角の割れ、左ヘッドライト下の擦り傷',
+    otherName: '(物損・相手なし)', otherPhone: '', otherPlate: '', otherDamage: '倉庫のポールに擦過痕',
+  };
+  addIssue(8, 'rear', 'mid', '後バンパー凹み(追突された)', '信号待ちで後ろから追突された。自走可', 20, true);
+  issues[issues.length - 1].pins = [{ view: 'rear', x: 0.62, y: 0.76 }];
+  issues[issues.length - 1].accident = {
+    datetime: `${shift(today, -20)}T17:15`, place: '環七通り 大谷田陸橋下 交差点', type: '追突された', police: '綾瀬警察署',
+    driverName: vehicles[8].driverName, plate: vehicles[8].plate, ownDamage: '後バンパー中央の凹み、ナンバープレート曲がり',
+    otherName: '山田 一郎', otherPhone: '090-0000-0000', otherPlate: '練馬 500 さ 11-22', otherDamage: 'フロントバンパー擦り傷',
+  };
   addIssue(11, 'hood', 'mid', 'アイドリングが不安定', '信号待ちで回転数が上下する', 12);
   addIssue(5, 'windshield', 'high', 'フロントガラスにヒビ(運転席側 15cm)', '飛び石。視界にかかるため早急に交換', 2);
   addIssue(8, 'cargo', 'mid', '荷室の床板がめくれている', '台車が引っかかる', 6);

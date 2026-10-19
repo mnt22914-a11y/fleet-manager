@@ -12,7 +12,7 @@ const $toast = document.getElementById('toast');
 
 // 画面ごとの UI 状態(フィルタや並び順)。保存はしない。
 const ui = {
-  vehicles: { q: '', base: '', status: '', onlyAlert: false, sortKey: 'code', sortDir: 'asc', view: 'lot' },
+  vehicles: { q: '', base: '', status: '', onlyAlert: false, sortKey: 'driverName', sortDir: 'asc', view: 'lot' },
   maintenance: { q: '', ym: '', vehicleId: '', type: '' },
   detail: { part: '' },
 };
@@ -42,7 +42,7 @@ function download(filename, text, mime = 'text/plain') {
 
 function vehicleLabel(v) {
   if (!v) return '(削除された車両)';
-  return `${v.code} ${v.name || v.model || ''}`.trim();
+  return `${v.driverName || '(名前なし)'}`;
 }
 
 function badgeLevel(level) {
@@ -229,8 +229,8 @@ function renderVehicles(state, today) {
     </div>
     <div class="card">
       <div class="toolbar">
-        <input type="search" placeholder="管理番号・ナンバー・車種・担当者で検索" value="${esc(u.q)}" data-filter="vehicles.q">
-        <select data-filter="vehicles.base">${opt('', 'すべての拠点', !u.base)}${settings.bases.map((b) => opt(b, b, u.base === b)).join('')}</select>
+        <input type="search" placeholder="ドライバー名・ナンバー・車両QRで検索" value="${esc(u.q)}" data-filter="vehicles.q">
+        <select data-filter="vehicles.base">${opt('', 'すべてのチーム', !u.base)}${settings.bases.map((b) => opt(b, b, u.base === b)).join('')}</select>
         <select data-filter="vehicles.status">
           ${opt('', '廃車以外', u.status === '')}
           ${Object.entries(L.STATUS).map(([k, v]) => opt(k, v, u.status === k)).join('')}
@@ -247,10 +247,9 @@ function renderVehicles(state, today) {
       ${rows.length === 0 ? `<div class="empty"><strong>該当する車両がありません</strong>${vehicles.length === 0 ? '「＋ 車両を追加」から登録してください。' : '検索条件を変えてみてください。'}</div>` : u.view === 'lot' ? renderLot(rows, issueStatus, alertsByVehicle, settings) : `
       <div class="table-wrap"><table>
         <thead><tr>
-          ${th('code', '管理番号 / 車両名')}
+          ${th('driverName', 'ドライバー')}
           ${th('plate', 'ナンバー')}
-          ${th('model', '車種')}
-          ${th('base', '拠点')}
+          ${th('base', 'チーム')}
           ${th('status', 'ステータス')}
           <th>異常</th>
           ${th('inspectionExpiry', '車検満了')}
@@ -261,9 +260,8 @@ function renderVehicles(state, today) {
         </tr></thead>
         <tbody>
           ${rows.map((v) => `<tr class="clickable" data-action="open-vehicle" data-id="${esc(v.id)}">
-            <td><div class="primary">${esc(v.code)}</div><div class="secondary">${esc(v.name || '')}${v.driver ? ' ・ ' + esc(v.driver) : ''}</div></td>
+            <td><div class="primary">${esc(v.driverName)}</div>${v.loaner ? `<div class="secondary">代車使用中: ${esc(L.loanerLabel(v.loaner, vehicles))}</div>` : ''}</td>
             <td class="nowrap">${esc(v.plate)}</td>
-            <td><div>${esc(v.model || '—')}</div><div class="secondary">${esc(v.maker || '')}</div></td>
             <td class="nowrap">${esc(v.base || '—')}</td>
             <td>${badgeStatus(v.status)}</td>
             <td>${(() => { const st = Object.values(issueStatus.get(v.id) || {}); if (!st.length) return '<span class="muted">—</span>'; const n = st.reduce((a, x) => a + x.count, 0); const sev = st.map((x) => x.severity).sort((a, b) => L.SEVERITY[a].order - L.SEVERITY[b].order)[0]; return `<span class="badge plain sev-${sev}">${n} 件</span>`; })()}</td>
@@ -296,13 +294,15 @@ function miniVan(v, level) {
 }
 
 function renderLot(rows, issueStatus, alertsByVehicle, settings) {
+  const lentTo = new Map(); // 自社代車として貸し出している車 → 使っているドライバー
+  for (const v of store.getState().vehicles) if (v.loaner?.type === 'own' && v.loaner.vehicleId) lentTo.set(v.loaner.vehicleId, v.driverName);
   const groups = new Map();
   for (const v of rows) {
-    const key = v.base || '(拠点なし)';
+    const key = v.base || '(チーム未設定)';
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(v);
   }
-  // 設定の拠点順 → それ以外
+  // 設定のチーム順 → それ以外
   const order = [...settings.bases.filter((b) => groups.has(b)), ...[...groups.keys()].filter((k) => !settings.bases.includes(k))];
   let idx = 0;
   return `<div class="lot">${order.map((base) => {
@@ -326,9 +326,10 @@ function renderLot(rows, issueStatus, alertsByVehicle, settings) {
               ${issueCount ? `<span class="slot-issue sev-${issueSev}" title="未対応の異常 ${issueCount} 件">${issueCount}</span>` : ''}
               ${v.status === 'repair' ? '<span class="slot-flag repair">修理中</span>' : v.status === 'idle' ? '<span class="slot-flag idle">休車</span>' : v.status === 'retired' ? '<span class="slot-flag retired">廃車</span>' : ''}
             </div>
-            <div class="slot-code">${esc(v.code)}</div>
-            <div class="slot-sub">${esc(v.name || v.model || '')}</div>
+            <div class="slot-code">${esc(v.driverName)}</div>
             <div class="slot-plate">${esc(v.plate)}</div>
+            ${v.loaner ? `<div class="slot-loaner">🚗 代車 ${esc(L.loanerLabel(v.loaner, rows).replace(/^(自社代車|借代車) ?/, ''))}</div>` : ''}
+            ${lentTo.get(v.id) ? `<div class="slot-loaner lent">${esc(lentTo.get(v.id))} の代車</div>` : ''}
             <div class="slot-chips">${chips.join('')}</div>
           </div>`;
         }).join('')}
@@ -364,8 +365,8 @@ function renderVehicleDetail(state, id, today) {
     <a class="back" href="#/vehicles">← 車両台帳へ</a>
     <div class="detail-head" style="margin-bottom:16px">
       <div>
-        <div class="title"><h1>${esc(v.code)}${v.name ? ' ' + esc(v.name) : ''}</h1>${badgeStatus(v.status)}</div>
-        <div class="plate">${esc(v.plate)} <span class="muted" style="font-weight:500">・ ${esc(v.maker || '')} ${esc(v.model || '')}${v.base ? ' ・ ' + esc(v.base) : ''}</span></div>
+        <div class="title"><h1>${esc(v.driverName)}</h1>${badgeStatus(v.status)}</div>
+        <div class="plate">${esc(v.plate)} <span class="muted" style="font-weight:500">${v.maker ? '・ ' + esc(v.maker) : ''}${v.base ? ' ・ ' + esc(v.base) : ''}</span></div>
       </div>
       <div class="actions">
         <button class="btn danger" data-action="delete-vehicle" data-id="${esc(v.id)}">削除</button>
@@ -374,6 +375,7 @@ function renderVehicleDetail(state, id, today) {
       </div>
     </div>
     <div class="stack">
+      ${renderLoanerBanner(v, state.vehicles)}
       <div class="deadline-tiles">
         ${tile('車検満了日', v.inspectionExpiry)}
         ${tile('自賠責満了日', v.jibaisekiExpiry)}
@@ -395,12 +397,12 @@ function renderVehicleDetail(state, id, today) {
         <div class="card">
           <div class="card-head"><h2>車両情報</h2></div>
           <div class="card-body"><div class="kv">
-            ${kv('メーカー / 車種', esc([v.maker, v.model].filter(Boolean).join(' ')))}
+            ${kv('車両QR', esc(v.qr))}
+            ${kv('メーカー', esc(v.maker))}
             ${kv('型式', esc(v.modelCode))}
-            ${kv('車台番号', esc(v.vin))}
             ${kv('初度登録', v.firstRegistration ? esc(v.firstRegistration.replace('-', '/')) : '')}
-            ${kv('拠点', esc(v.base))}
-            ${kv('主担当ドライバー', esc(v.driver))}
+            ${kv('チーム', esc(v.base))}
+            ${kv('任意保険の連絡先', v.insurancePhone ? `<a href="tel:${esc(v.insurancePhone)}">${esc(v.insurancePhone)}</a>` : '')}
             ${kv('走行距離', v.odometer != null && v.odometer !== '' ? `${L.fmtKm(v.odometer)} <span class="muted" style="font-weight:400;font-size:12px">(${L.fmtDate(v.odometerDate)} 時点)</span>` : '')}
             ${kv('登録日', v.createdAt ? L.fmtDate(v.createdAt.slice(0, 10)) : '')}
           </div>
@@ -431,6 +433,7 @@ function renderVehicleDetail(state, id, today) {
           </div>
         </div>
       </div>
+      ${renderAccidentCard(v, issues)}
       <div class="card">
         <div class="card-head"><h2>整備履歴</h2><span class="muted">${recs.length} 件</span></div>
         ${recs.length === 0 ? '<div class="empty"><strong>まだ整備記録がありません</strong>「＋ 整備を記録」から追加してください。</div>' : `
@@ -442,11 +445,59 @@ function renderVehicleDetail(state, id, today) {
     </div>`;
 }
 
+function renderLoanerBanner(v, vehicles) {
+  const parts = [];
+  if (v.status === 'repair') {
+    if (v.loaner) {
+      parts.push(`<div class="banner repair"><div><strong>修理中 ・ 代車使用中</strong><div class="muted">${esc(L.loanerLabel(v.loaner, vehicles))}${v.loaner.since ? ` ・ ${L.fmtDate(v.loaner.since)} から` : ''}${v.loaner.note ? ` ・ ${esc(v.loaner.note)}` : ''}</div></div>
+        <button class="btn primary" data-action="return-loaner" data-id="${esc(v.id)}">代車を返却して稼働に戻す</button></div>`);
+    } else {
+      parts.push(`<div class="banner repair"><div><strong>修理中</strong><div class="muted">代車があれば「編集」から登録できます</div></div>
+        <button class="btn" data-action="return-loaner" data-id="${esc(v.id)}">修理完了(稼働に戻す)</button></div>`);
+    }
+  }
+  const lentTo = vehicles.filter((x) => x.loaner?.type === 'own' && x.loaner.vehicleId === v.id);
+  for (const x of lentTo) {
+    parts.push(`<div class="banner lent"><div><strong>${esc(x.driverName)} の代車として貸出中</strong><div class="muted">${esc(x.driverName)} の車両(${esc(x.plate)})が修理中${x.loaner.since ? ` ・ ${L.fmtDate(x.loaner.since)} から` : ''}</div></div>
+      <a class="btn" href="#/vehicles/${encodeURIComponent(x.id)}">${esc(x.driverName)} の車両を見る</a></div>`);
+  }
+  return parts.join('');
+}
+
+function renderAccidentCard(v, issues) {
+  const list = L.sortIssues(issues.filter((i) => i.accident));
+  if (!list.length) return '';
+  return `<div class="card">
+    <div class="card-head"><h2>事故記録</h2><span class="muted">${list.filter((i) => i.status === 'open').length} 件が未修理 ・ 全 ${list.length} 件</span></div>
+    <div class="accident-list">${list.map((i) => accidentItem(i)).join('')}</div>
+  </div>`;
+}
+
+function accidentItem(i) {
+  const a = i.accident || {};
+  const dt = a.datetime ? a.datetime.replace('T', ' ').replace(/-/g, '/') : L.fmtDate(i.reportedAt);
+  const cell = (k, val) => `<div><div class="k">${k}</div><div class="v">${val || '<span class="muted">—</span>'}</div></div>`;
+  return `<div class="accident-item ${i.status}">
+    <div class="accident-head">
+      <div><span class="badge plain ${i.status === 'open' ? 'sev-high' : ''}">${i.status === 'open' ? '未修理' : '修理済み'}</span> <strong>${esc(i.title)}</strong>
+        <span class="muted" style="font-size:12px">・ ${esc(L.partLabel(i.part))}${(i.pins || []).length ? ` ・ 📍 ${i.pins.length} か所` : ''}</span></div>
+      <div style="display:flex;gap:6px">${i.status === 'open' ? `<button class="btn small" data-action="fix-issue" data-id="${esc(i.id)}">修理済みにする</button>` : ''}<button class="btn small ghost" data-action="edit-issue" data-id="${esc(i.id)}">編集</button></div>
+    </div>
+    <div class="accident-grid">
+      <div class="accident-sec"><h4>事故の状況</h4>${cell('日時', esc(dt))}${cell('場所', esc(a.place))}${cell('形態', esc(a.type))}${cell('管轄警察署', esc(a.police))}</div>
+      <div class="accident-sec"><h4>自分の情報</h4>${cell('運転手', esc(a.driverName))}${cell('車両ナンバー', esc(a.plate))}${cell('自車の損傷', esc(a.ownDamage))}</div>
+      <div class="accident-sec"><h4>相手の情報</h4>${cell('氏名', esc(a.otherName))}${cell('電話番号', a.otherPhone ? `<a href="tel:${esc(a.otherPhone)}">${esc(a.otherPhone)}</a>` : '')}${cell('車両ナンバー', esc(a.otherPlate))}${cell('相手の損傷', esc(a.otherDamage))}</div>
+    </div>
+    ${i.detail ? `<div class="muted" style="font-size:12.5px;white-space:pre-wrap">${esc(i.detail)}</div>` : ''}
+    ${photoStrip(i.photos)}
+  </div>`;
+}
+
 function recordRow(r, vehicle) {
   const next = [r.nextDate ? L.fmtDate(r.nextDate) : '', r.nextOdometer ? L.fmtKm(r.nextOdometer) : ''].filter(Boolean).join(' / ');
   return `<tr class="clickable" data-action="edit-record" data-id="${esc(r.id)}">
     <td class="nowrap num">${L.fmtDate(r.date)}</td>
-    ${vehicle === null ? '' : `<td><div class="primary">${esc(vehicle?.code || '')}</div><div class="secondary">${esc(vehicle?.plate || '(削除された車両)')}</div></td>`}
+    ${vehicle === null ? '' : `<td><div class="primary">${esc(vehicle?.driverName || '')}</div><div class="secondary">${esc(vehicle?.plate || '(削除された車両)')}</div></td>`}
     <td class="nowrap"><span class="badge plain">${esc(r.type)}</span></td>
     <td><div>${esc(r.title && r.title !== r.type ? r.title : '')}${r.photos?.length ? ` <span class="muted" title="写真 ${r.photos.length} 枚">📷${r.photos.length}</span>` : ''}</div>${r.detail ? `<div class="secondary">${esc(r.detail)}</div>` : ''}</td>
     <td>${esc(r.vendor || '—')}</td>
@@ -469,12 +520,13 @@ function renderPartChips(status, selected) {
 
 function issueItem(i, { showVehicle = false, showPart = true } = {}) {
   const v = showVehicle ? store.getVehicle(i.vehicleId) : null;
-  const meta = [showVehicle ? esc(vehicleLabel(v)) : '', showPart ? esc(L.partLabel(i.part)) : '', i.pin && VIEWS[i.pin.view] ? `📍 ${VIEWS[i.pin.view].title}` : '', `発見 ${L.fmtDate(i.reportedAt)}`, i.status === 'fixed' ? `対応 ${L.fmtDate(i.fixedAt)}` : ''].filter(Boolean).join(' ・ ');
+  const pinViews = [...new Set((i.pins || []).map((pn) => VIEWS[pn.view]?.title).filter(Boolean))];
+  const meta = [showVehicle ? esc(vehicleLabel(v)) : '', showPart ? esc(L.partLabel(i.part)) : '', pinViews.length ? `📍 ${pinViews.join('・')}${(i.pins || []).length > 1 ? `(${i.pins.length} か所)` : ''}` : '', `発生 ${L.fmtDate(i.reportedAt)}`, i.status === 'fixed' ? `${i.accident ? '修理' : '対応'} ${L.fmtDate(i.fixedAt)}` : ''].filter(Boolean).join(' ・ ');
   const action = showVehicle ? `data-action="open-vehicle-part" data-id="${esc(i.vehicleId)}" data-part="${esc(i.part)}"` : `data-action="edit-issue" data-id="${esc(i.id)}"`;
   const num = i.status === 'open' && !showVehicle && i._num ? `<span class="issue-num">${i._num}</span>` : '';
   return `<div class="issue-item ${i.status}" ${action}>
-    <div><div class="t">${num}${badgeSeverity(i.severity)} ${esc(i.title)}</div>${i.detail ? `<div class="d">${esc(i.detail)}</div>` : ''}<div class="m">${meta}</div>${showVehicle ? '' : photoStrip(i.photos)}</div>
-    ${i.status === 'open' && !showVehicle ? `<div><button class="btn small" data-action="fix-issue" data-id="${esc(i.id)}">対応済みにする</button></div>` : ''}
+    <div><div class="t">${num}${badgeSeverity(i.severity)}${i.accident ? ' <span class="badge plain accident-badge">事故</span>' : ''} ${esc(i.title)}</div>${i.detail ? `<div class="d">${esc(i.detail)}</div>` : ''}<div class="m">${meta}</div>${showVehicle ? '' : photoStrip(i.photos)}</div>
+    ${i.status === 'open' && !showVehicle ? `<div><button class="btn small" data-action="fix-issue" data-id="${esc(i.id)}">${i.accident ? '修理済みにする' : '対応済みにする'}</button></div>` : ''}
   </div>`;
 }
 
@@ -508,14 +560,14 @@ function renderMaintenance(state, today) {
     if (u.type && r.type !== u.type) return false;
     if (nq) {
       const v = byId.get(r.vehicleId);
-      const hay = [r.title, r.detail, r.vendor, r.note, v?.code, v?.plate, v?.name].join(' ').toLowerCase();
+      const hay = [r.title, r.detail, r.vendor, r.note, v?.driverName, v?.plate].join(' ').toLowerCase();
       if (!hay.includes(nq)) return false;
     }
     return true;
   });
   rows.sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || '')));
   const total = rows.reduce((a, r) => a + (Number(r.cost) || 0), 0);
-  const sortedVehicles = L.sortBy(vehicles, 'code');
+  const sortedVehicles = L.sortBy(vehicles, 'driverName');
 
   return `
     <div class="page-head">
@@ -547,9 +599,9 @@ function renderMaintenance(state, today) {
 function renderSettings(state) {
   const s = state.settings;
   const chips = (items, kind) => `<div class="chips">${items.map((x) => `<span class="chip">${esc(x)}<button type="button" title="削除" data-action="remove-${kind}" data-value="${esc(x)}">×</button></span>`).join('')}</div>
-    <form class="add-row" data-form="add-${kind}"><input type="text" name="value" placeholder="${kind === 'base' ? '拠点名を追加' : '種別を追加'}" required><button class="btn" type="submit">追加</button></form>`;
+    <form class="add-row" data-form="add-${kind}"><input type="text" name="value" placeholder="${kind === 'base' ? 'チーム名を追加' : '種別を追加'}" required><button class="btn" type="submit">追加</button></form>`;
   return `
-    <div class="page-head"><div><h1>設定</h1><p class="sub">アラートの基準、拠点、データの保管</p></div></div>
+    <div class="page-head"><div><h1>設定</h1><p class="sub">アラートの基準、チーム、データの保管</p></div></div>
     <div class="grid grid-2">
       <div class="stack">
         <div class="card">
@@ -567,7 +619,7 @@ function renderSettings(state) {
           </div>
         </div>
         <div class="card">
-          <div class="card-head"><h2>拠点</h2></div>
+          <div class="card-head"><h2>チーム</h2></div>
           <div class="card-body">${chips(s.bases, 'base')}</div>
         </div>
         <div class="card">
@@ -661,22 +713,30 @@ function openVehicleForm(existing) {
         <input type="hidden" name="id" value="${esc(v.id || '')}">
         <div class="form-grid">
           <legend>基本情報</legend>
-          ${field('code', '管理番号', text('code', v.code, 'placeholder="V-001" required'), { required: true, hint: '社内で呼ぶ番号。重複しないように' })}
-          ${field('name', '車両名(呼び名)', text('name', v.name, 'placeholder="ハイエース 1号車"'))}
-          ${field('plate', 'ナンバー', text('plate', v.plate, 'placeholder="品川 400 あ 12-34" required'), { required: true })}
+          ${field('driverName', 'ドライバー名', text('driverName', v.driverName, 'placeholder="佐藤 太郎" required'), { required: true })}
+          ${field('plate', 'ナンバー', text('plate', v.plate, 'placeholder="品川 480 あ 12-34" required'), { required: true })}
           ${field('status', 'ステータス', `<select id="f-status" name="status">${Object.entries(L.STATUS).map(([k, l]) => opt(k, l, v.status === k)).join('')}</select>`, { required: true })}
-          ${field('maker', 'メーカー', text('maker', v.maker, 'placeholder="トヨタ"'))}
-          ${field('model', '車種', text('model', v.model, 'placeholder="ハイエースバン"'))}
-          ${field('modelCode', '型式', text('modelCode', v.modelCode, 'placeholder="3BF-GDH201V"'))}
-          ${field('vin', '車台番号', text('vin', v.vin))}
+          ${field('qr', '車両QR', text('qr', v.qr, 'placeholder="QR の中身(車両コード)"'), { hint: '車両に貼った QR を読んだ文字列' })}
+          ${field('maker', 'メーカー', text('maker', v.maker, 'placeholder="スズキ"'))}
+          ${field('modelCode', '型式', text('modelCode', v.modelCode, 'placeholder="3BD-DA17V"'))}
           ${field('firstRegistration', '初度登録年月', `<input type="month" id="f-firstRegistration" name="firstRegistration" value="${esc(v.firstRegistration || '')}">`)}
-          ${field('base', '拠点', `<select id="f-base" name="base">${s.bases.map((b) => opt(b, b, v.base === b)).join('')}${v.base && !s.bases.includes(v.base) ? opt(v.base, v.base, true) : ''}</select>`, { hint: '拠点は設定画面で追加できます' })}
-          ${field('driver', '主担当ドライバー', text('driver', v.driver))}
+          ${field('base', 'チーム', `<select id="f-base" name="base">${s.bases.map((b) => opt(b, b, v.base === b)).join('')}${v.base && !s.bases.includes(v.base) ? opt(v.base, v.base, true) : ''}</select>`, { hint: 'チームは設定画面で追加できます' })}
+          <fieldset class="full" id="loaner-field" ${v.status === 'repair' ? '' : 'hidden'}>
+            <div class="form-grid">
+              <legend>代車(修理中のとき)</legend>
+              ${field('loanerType', '代車', `<select id="f-loanerType" name="loanerType">${opt('', '代車なし', !v.loaner)}${opt('own', '自社代車(管理している車両から選ぶ)', v.loaner?.type === 'own')}${opt('rental', '借代車(ナンバーだけ記録)', v.loaner?.type === 'rental')}</select>`)}
+              ${field('loanerSince', '使い始めた日', date('loanerSince', v.loaner?.since || ''))}
+              <div class="field" id="loaner-own" ${v.loaner?.type === 'own' ? '' : 'hidden'}><label for="f-loanerVehicleId">自社代車の車両</label><select id="f-loanerVehicleId" name="loanerVehicleId">${opt('', '選んでください', !v.loaner?.vehicleId)}${L.sortBy(store.getState().vehicles.filter((x) => x.id !== v.id && x.status !== 'retired'), 'driverName').map((x) => opt(x.id, `${x.plate} ・ ${x.driverName}`, v.loaner?.vehicleId === x.id)).join('')}</select></div>
+              <div class="field" id="loaner-rental" ${v.loaner?.type === 'rental' ? '' : 'hidden'}><label for="f-loanerPlate">借代車のナンバー</label>${text('loanerPlate', v.loaner?.plate || '', 'placeholder="品川 480 い 56-78"')}</div>
+              ${field('loanerNote', 'メモ', text('loanerNote', v.loaner?.note || '', 'placeholder="○○レンタカー、11/5 返却予定"'), { full: true })}
+            </div>
+          </fieldset>
           <legend>期限</legend>
           ${field('inspectionExpiry', '車検満了日', date('inspectionExpiry', v.inspectionExpiry))}
           ${field('jibaisekiExpiry', '自賠責満了日', date('jibaisekiExpiry', v.jibaisekiExpiry))}
           ${field('insuranceExpiry', '任意保険満了日', date('insuranceExpiry', v.insuranceExpiry))}
           ${field('insuranceCompany', '任意保険の会社', text('insuranceCompany', v.insuranceCompany))}
+          ${field('insurancePhone', '保険会社の電話番号', `<input type="tel" id="f-insurancePhone" name="insurancePhone" value="${esc(v.insurancePhone || '')}" placeholder="0120-000-000">`, { hint: '事故のときにすぐ電話できるように' })}
           <legend>走行距離</legend>
           ${field('odometer', '現在の走行距離(km)', num('odometer', v.odometer, 'step="1"'))}
           ${field('odometerDate', '記録日', date('odometerDate', v.odometerDate || (isNew ? L.todayISO() : '')))}
@@ -687,22 +747,33 @@ function openVehicleForm(existing) {
         <div class="right-group"><button type="button" class="btn" data-dlg="cancel">キャンセル</button><button type="submit" class="btn primary">${isNew ? '追加する' : '保存する'}</button></div>
       </div>
     </form>`;
-  openDialog(html, (d) => {
+  const { form: vform } = openDialog(html, (d) => {
+    const { loanerType, loanerSince, loanerVehicleId, loanerPlate, loanerNote, ...rest } = d;
     const vehicle = {
-      ...d,
+      ...rest,
       id: d.id || undefined,
-      code: d.code.trim(),
+      driverName: d.driverName.trim(),
       plate: d.plate.trim(),
       odometer: d.odometer === '' ? null : Number(d.odometer),
+      loaner: d.status === 'repair' && loanerType ? { type: loanerType, since: loanerSince || '', vehicleId: loanerType === 'own' ? loanerVehicleId : '', plate: loanerType === 'rental' ? (loanerPlate || '').trim() : '', note: (loanerNote || '').trim() } : null,
     };
     const errors = L.validateVehicle(vehicle);
-    const dup = store.getState().vehicles.find((x) => x.code === vehicle.code && x.id !== vehicle.id);
-    if (dup) errors.push(`管理番号「${vehicle.code}」はすでに使われています`);
     if (errors.length) return errors;
     const id = store.upsertVehicle(vehicle);
-    toast(isNew ? `${vehicle.code} を追加しました` : '保存しました');
+    toast(isNew ? `${vehicle.driverName} の車両を追加しました` : '保存しました');
     if (isNew) location.hash = `#/vehicles/${encodeURIComponent(id)}`;
   });
+  // ステータスが修理中のときだけ代車欄を出す
+  const statusSel = vform.querySelector('#f-status'), loanerFs = vform.querySelector('#loaner-field'), loanerType = vform.querySelector('#f-loanerType');
+  const syncLoaner = () => {
+    loanerFs.hidden = statusSel.value !== 'repair';
+    vform.querySelector('#loaner-own').hidden = loanerType.value !== 'own';
+    vform.querySelector('#loaner-rental').hidden = loanerType.value !== 'rental';
+    if (loanerType.value && !vform.querySelector('#f-loanerSince').value) vform.querySelector('#f-loanerSince').value = L.todayISO();
+  };
+  statusSel.addEventListener('change', syncLoaner);
+  loanerType.addEventListener('change', syncLoaner);
+  syncLoaner();
 }
 
 function openRecordForm(existing, presetVehicleId) {
@@ -710,7 +781,7 @@ function openRecordForm(existing, presetVehicleId) {
   const s = state.settings;
   const r = existing || { vehicleId: presetVehicleId || '', date: L.todayISO(), type: s.types[0] || '' };
   const isNew = !existing;
-  const vehicles = L.sortBy(state.vehicles.filter((v) => v.status !== 'retired' || v.id === r.vehicleId), 'code');
+  const vehicles = L.sortBy(state.vehicles.filter((v) => v.status !== 'retired' || v.id === r.vehicleId), 'driverName');
   const lockVehicle = Boolean(presetVehicleId) || !isNew;
   const types = s.types.includes(r.type) || !r.type ? s.types : [...s.types, r.type];
   const html = `
@@ -819,7 +890,9 @@ function openIssueForm(existing, presetVehicleId, presetPart) {
   const state = store.getState();
   const i = existing || { vehicleId: presetVehicleId || '', part: presetPart || '', severity: 'mid', status: 'open', reportedAt: L.todayISO() };
   const isNew = !existing;
-  const vehicles = L.sortBy(state.vehicles.filter((v) => v.status !== 'retired' || v.id === i.vehicleId), 'code');
+  const vehicles = L.sortBy(state.vehicles.filter((v) => v.status !== 'retired' || v.id === i.vehicleId), 'driverName');
+  const a = i.accident || {};
+  const vehicleOf = store.getVehicle(i.vehicleId);
   const lockVehicle = Boolean(presetVehicleId) || !isNew;
   const g0 = L.groupOfPart(i.part);
   const html = `
@@ -833,15 +906,40 @@ function openIssueForm(existing, presetVehicleId, presetPart) {
           ${field('group', '場所', `<select id="f-group" name="group" required>${!g0 ? opt('', '選んでください', true) : ''}${L.PART_GROUPS.map((g) => opt(g.id, g.label, g0 && g.id === g0.id)).join('')}</select>`, { required: true, hint: '種類を選ぶと、次に左右前後を選べます' })}
           <div class="field" id="variant-field"></div>
           <input type="hidden" name="part" id="f-part" value="${esc(i.part || '')}">
-          <input type="hidden" name="pin" id="f-pin" value="${esc(i.pin ? JSON.stringify(i.pin) : '')}">
+          <input type="hidden" name="pins" id="f-pins" value="${esc(JSON.stringify(i.pins || []))}">
           <div class="field full" id="pick-field"></div>
           ${field('severity', '緊急度', `<div class="seg">${Object.entries(L.SEVERITY).map(([k, v]) => `<label class="seg-item sev-${k}"><input type="radio" name="severity" value="${k}" ${i.severity === k ? 'checked' : ''}>${v.label}</label>`).join('')}</div>`, { required: true, hint: '至急 = 走行に支障 / 早めに = 近いうちに修理 / 様子見 = 記録のみ' })}
-          ${field('reportedAt', '発見日', date('reportedAt', i.reportedAt, 'required'), { required: true })}
+          ${field('reportedAt', '発生日', date('reportedAt', i.reportedAt, 'required'), { required: true })}
+          <div class="field full"><label class="inline-check accident-check"><input type="checkbox" name="isAccident" id="f-isAccident" ${i.accident ? 'checked' : ''}> <strong>事故記録として残す</strong><span class="muted">(保険で使う情報を記録。傷の場所は図に複数ピンを打てます)</span></label></div>
+          <fieldset class="full accident-fs" id="accident-field" ${i.accident ? '' : 'hidden'}>
+            <div class="accident-form">
+              <div class="accident-sec">
+                <h4>◆ 事故の状況</h4>
+                ${field('acDatetime', '日時', `<input type="datetime-local" id="f-acDatetime" name="acDatetime" value="${esc(a.datetime || '')}">`)}
+                ${field('acPlace', '場所', text('acPlace', a.place, 'placeholder="○○市△△ 交差点"'))}
+                ${field('acType', '事故の形態', `<select id="f-acType" name="acType">${opt('', '選んでください', !a.type)}${L.ACCIDENT_TYPES.map((t) => opt(t, t, a.type === t)).join('')}</select>`)}
+                ${field('acPolice', '管轄警察署', text('acPolice', a.police, 'placeholder="○○警察署"'))}
+              </div>
+              <div class="accident-sec">
+                <h4>◆ 自分の情報</h4>
+                ${field('acDriverName', '運転手氏名', text('acDriverName', a.driverName ?? vehicleOf?.driverName ?? ''))}
+                ${field('acPlate', '車両ナンバー', text('acPlate', a.plate ?? vehicleOf?.plate ?? ''))}
+                ${field('acOwnDamage', '自車の損傷状況', `<textarea id="f-acOwnDamage" name="acOwnDamage" rows="2" placeholder="左後バンパー凹み、テールランプ割れ">${esc(a.ownDamage || '')}</textarea>`)}
+              </div>
+              <div class="accident-sec">
+                <h4>◆ 相手の情報</h4>
+                ${field('acOtherName', '氏名', text('acOtherName', a.otherName))}
+                ${field('acOtherPhone', '電話番号', `<input type="tel" id="f-acOtherPhone" name="acOtherPhone" value="${esc(a.otherPhone || '')}">`)}
+                ${field('acOtherPlate', '車両ナンバー', text('acOtherPlate', a.otherPlate))}
+                ${field('acOtherDamage', '相手の損傷状況', `<textarea id="f-acOtherDamage" name="acOtherDamage" rows="2">${esc(a.otherDamage || '')}</textarea>`)}
+              </div>
+            </div>
+          </fieldset>
           ${field('title', '異常の内容', text('title', i.title, 'placeholder="左スライドドアが閉まりにくい" required'), { required: true, full: true })}
           ${field('detail', '詳しく(任意)', `<textarea id="f-detail" name="detail" placeholder="いつから、どんな状況で、誰が気づいたか">${esc(i.detail || '')}</textarea>`, { full: true })}
           ${photoFieldHTML(i.photos || [])}
-          ${isNew ? '' : `${field('status', '状態', `<select id="f-status" name="status">${opt('open', '未対応', i.status === 'open')}${opt('fixed', '対応済み', i.status === 'fixed')}</select>`)}
-          ${field('fixedAt', '対応日', date('fixedAt', i.fixedAt || ''), { hint: '対応済みにするときに入れます' })}`}
+          ${isNew ? '' : `${field('status', '状態', `<select id="f-status" name="status">${opt('open', i.accident ? '未修理' : '未対応', i.status === 'open')}${opt('fixed', i.accident ? '修理済み' : '対応済み', i.status === 'fixed')}</select>`)}
+          ${field('fixedAt', i.accident ? '修理日' : '対応日', date('fixedAt', i.fixedAt || ''), { hint: '済みにするときに入れます' })}`}
         </div>
       </div>
       <div class="dlg-foot">
@@ -861,9 +959,17 @@ function openIssueForm(existing, presetVehicleId, presetPart) {
       reportedAt: d.reportedAt,
       status: d.status || 'open',
       fixedAt: d.status === 'fixed' ? (d.fixedAt || L.todayISO()) : '',
-      pin: null,
+      pins: [],
+      accident: d.isAccident ? {
+        datetime: d.acDatetime || '', place: (d.acPlace || '').trim(), type: d.acType || '', police: (d.acPolice || '').trim(),
+        driverName: (d.acDriverName || '').trim(), plate: (d.acPlate || '').trim(), ownDamage: (d.acOwnDamage || '').trim(),
+        otherName: (d.acOtherName || '').trim(), otherPhone: (d.acOtherPhone || '').trim(), otherPlate: (d.acOtherPlate || '').trim(), otherDamage: (d.acOtherDamage || '').trim(),
+      } : null,
     };
-    if (d.pin) { try { const pn = JSON.parse(d.pin); if (VIEWS[pn.view] && pn.x >= 0 && pn.x <= 1 && pn.y >= 0 && pn.y <= 1) issue.pin = { view: pn.view, x: Number(pn.x.toFixed(4)), y: Number(pn.y.toFixed(4)) }; } catch { /* ピンなし */ } }
+    try {
+      const arr = d.pins ? JSON.parse(d.pins) : [];
+      issue.pins = (Array.isArray(arr) ? arr : []).filter((pn) => VIEWS[pn.view] && pn.x >= 0 && pn.x <= 1 && pn.y >= 0 && pn.y <= 1).map((pn) => ({ view: pn.view, x: Number(Number(pn.x).toFixed(4)), y: Number(Number(pn.y).toFixed(4)) }));
+    } catch { issue.pins = []; }
     const errors = L.validateIssue(issue);
     const grp = L.PART_GROUPS.find((x) => x.id === d.group);
     if (grp && grp.variants.length > 1 && !grp.variants.some(([id]) => id === issue.part)) errors.unshift('左右(前後)を選んでください');
@@ -883,18 +989,24 @@ function openIssueForm(existing, presetVehicleId, presetPart) {
   });
   const form = $dialogRoot.querySelector('form');
   photoField = attachPhotoField(form, i.photos || []);
-  attachPartPicker(form);
+  const acCheck = form.querySelector('#f-isAccident'), acFs = form.querySelector('#accident-field');
+  const syncAccident = () => { acFs.hidden = !acCheck.checked; picker.setMulti(acCheck.checked); };
+  const picker = attachPartPicker(form);
+  acCheck.addEventListener('change', syncAccident);
+  syncAccident();
 }
 
 /** 場所 → 左右前後 → 図でピン、の 3 段を動かす。値は hidden の part / pin に入る。 */
 function attachPartPicker(form) {
   const groupSel = form.querySelector('#f-group');
   const partIn = form.querySelector('#f-part');
-  const pinIn = form.querySelector('#f-pin');
+  const pinIn = form.querySelector('#f-pins');
   const variantBox = form.querySelector('#variant-field');
   const pickBox = form.querySelector('#pick-field');
   let pickView = '';
-  const getPin = () => { try { return pinIn.value ? JSON.parse(pinIn.value) : null; } catch { return null; } };
+  let multi = false; // 事故記録のときは複数ピン
+  const getPins = () => { try { const v = pinIn.value ? JSON.parse(pinIn.value) : []; return Array.isArray(v) ? v : []; } catch { return []; } };
+  const setPins = (arr) => { pinIn.value = JSON.stringify(arr); };
 
   function renderVariants() {
     const grp = L.PART_GROUPS.find((x) => x.id === groupSel.value);
@@ -911,32 +1023,41 @@ function attachPartPicker(form) {
     const part = partIn.value;
     const views = part ? viewsForPart(part) : [];
     if (!views.length) { pickBox.innerHTML = ''; return; }
-    if (!views.includes(pickView)) pickView = (getPin() && views.includes(getPin().view)) ? getPin().view : views[0];
-    const pin = getPin();
-    pickBox.innerHTML = `<label>図で場所を指す(任意)</label>
-      <div class="pick-tabs">${views.map((k) => `<button type="button" class="seg-btn ${k === pickView ? 'on' : ''}" data-pick-tab="${k}">${VIEWS[k].title}</button>`).join('')}
-        <span class="spacer"></span>${pin ? `<span class="muted" style="font-size:12px">📍 ${VIEWS[pin.view].title}</span> <button type="button" class="btn ghost small" data-pick-clear>ピンを消す</button>` : '<span class="muted" style="font-size:12px">青い部位の中をクリックすると、その位置にピンを打ちます</span>'}
+    const pins = getPins();
+    if (!views.includes(pickView)) pickView = (pins[0] && views.includes(pins[0].view)) ? pins[0].view : views[0];
+    const here = pins.filter((pn) => pn.view === pickView).length;
+    const hint = multi ? '傷の場所をクリックするたびにピンが増えます(複数可)' : '青い部位の中をクリックすると、その位置にピンを打ちます';
+    pickBox.innerHTML = `<label>${multi ? '傷の場所を図で指す(複数可・任意)' : '図で場所を指す(任意)'}</label>
+      <div class="pick-tabs">${views.map((k) => { const n = pins.filter((pn) => pn.view === k).length; return `<button type="button" class="seg-btn ${k === pickView ? 'on' : ''}" data-pick-tab="${k}">${VIEWS[k].title}${n ? ` <b>${n}</b>` : ''}</button>`; }).join('')}
+        <span class="spacer"></span>${pins.length ? `<span class="muted" style="font-size:12px">📍 ${pins.length} か所</span> ${here ? `<button type="button" class="btn ghost small" data-pick-undo>この面の最後のピンを消す</button>` : ''}<button type="button" class="btn ghost small" data-pick-clear>すべて消す</button>` : `<span class="muted" style="font-size:12px">${hint}</span>`}
       </div>
-      <div class="pick-wrap">${renderPickView(pickView, part, pin && pin.view === pickView ? pin : null)}</div>`;
+      <div class="pick-wrap">${renderPickView(pickView, part, pins)}</div>`;
   }
-  groupSel.addEventListener('change', () => { partIn.value = ''; pinIn.value = ''; pickView = ''; renderVariants(); renderPick(); });
+  groupSel.addEventListener('change', () => { partIn.value = ''; setPins([]); pickView = ''; renderVariants(); renderPick(); });
   form.addEventListener('click', (e) => {
     const vb = e.target.closest('[data-variant]');
-    if (vb) { partIn.value = vb.dataset.variant; pinIn.value = ''; pickView = ''; renderVariants(); renderPick(); return; }
+    if (vb) { partIn.value = vb.dataset.variant; setPins([]); pickView = ''; renderVariants(); renderPick(); return; }
     const tb = e.target.closest('[data-pick-tab]');
     if (tb) { pickView = tb.dataset.pickTab; renderPick(); return; }
-    if (e.target.closest('[data-pick-clear]')) { pinIn.value = ''; renderPick(); return; }
+    if (e.target.closest('[data-pick-clear]')) { setPins([]); renderPick(); return; }
+    if (e.target.closest('[data-pick-undo]')) {
+      const pins = getPins(); const idx = pins.map((pn) => pn.view).lastIndexOf(pickView);
+      if (idx >= 0) pins.splice(idx, 1);
+      setPins(pins); renderPick(); return;
+    }
     const svg = e.target.closest('svg[data-pick-view]');
     if (svg) {
       const r = svg.getBoundingClientRect();
       const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
       if (x < 0 || x > 1 || y < 0 || y > 1) return;
-      pinIn.value = JSON.stringify({ view: svg.dataset.pickView, x: Number(x.toFixed(4)), y: Number(y.toFixed(4)) });
+      const pn = { view: svg.dataset.pickView, x: Number(x.toFixed(4)), y: Number(y.toFixed(4)) };
+      setPins(multi ? [...getPins(), pn] : [pn]);
       renderPick();
     }
   });
   renderVariants();
   renderPick();
+  return { setMulti(on) { multi = on; if (!on) { const pins = getPins(); if (pins.length > 1) setPins([pins[0]]); } renderPick(); } };
 }
 
 // ---- 写真 ----
@@ -1009,17 +1130,17 @@ function openLightbox(id) {
 // ---- CSV ----
 
 const VEHICLE_COLUMNS = [
-  { key: 'code', label: '管理番号' }, { key: 'name', label: '車両名' }, { key: 'plate', label: 'ナンバー' },
-  { key: 'maker', label: 'メーカー' }, { key: 'model', label: '車種' }, { key: 'modelCode', label: '型式' },
-  { key: 'vin', label: '車台番号' }, { key: 'firstRegistration', label: '初度登録' },
-  { key: 'status', label: 'ステータス', get: (v) => L.STATUS[v.status] || v.status }, { key: 'base', label: '拠点' },
-  { key: 'driver', label: '主担当' }, { key: 'inspectionExpiry', label: '車検満了日' }, { key: 'jibaisekiExpiry', label: '自賠責満了日' },
-  { key: 'insuranceExpiry', label: '任意保険満了日' }, { key: 'insuranceCompany', label: '任意保険会社' },
+  { key: 'driverName', label: 'ドライバー名' }, { key: 'plate', label: 'ナンバー' }, { key: 'qr', label: '車両QR' },
+  { key: 'maker', label: 'メーカー' }, { key: 'modelCode', label: '型式' }, { key: 'firstRegistration', label: '初度登録' },
+  { key: 'status', label: 'ステータス', get: (v) => L.STATUS[v.status] || v.status }, { key: 'base', label: 'チーム' },
+  { key: 'loaner', label: '代車', get: (v) => L.loanerLabel(v.loaner, store.getState().vehicles) },
+  { key: 'inspectionExpiry', label: '車検満了日' }, { key: 'jibaisekiExpiry', label: '自賠責満了日' },
+  { key: 'insuranceExpiry', label: '任意保険満了日' }, { key: 'insuranceCompany', label: '任意保険会社' }, { key: 'insurancePhone', label: '保険会社電話' },
   { key: 'odometer', label: '走行距離(km)' }, { key: 'odometerDate', label: '走行距離記録日' }, { key: 'note', label: '備考' },
 ];
 
 function exportVehiclesCSV() {
-  const vehicles = L.sortBy(store.getState().vehicles, 'code');
+  const vehicles = L.sortBy(store.getState().vehicles, 'driverName');
   download(`車両台帳_${L.todayISO()}.csv`, L.toCSV(vehicles, VEHICLE_COLUMNS), 'text/csv');
   toast('CSV を書き出しました');
 }
@@ -1029,7 +1150,7 @@ function exportRecordsCSV() {
   const byId = new Map(vehicles.map((v) => [v.id, v]));
   const cols = [
     { key: 'date', label: '実施日' },
-    { key: 'vehicle', label: '管理番号', get: (r) => byId.get(r.vehicleId)?.code || '' },
+    { key: 'vehicle', label: 'ドライバー名', get: (r) => byId.get(r.vehicleId)?.driverName || '' },
     { key: 'plate', label: 'ナンバー', get: (r) => byId.get(r.vehicleId)?.plate || '' },
     { key: 'type', label: '種別' }, { key: 'title', label: '内容' }, { key: 'detail', label: '詳細' },
     { key: 'vendor', label: '業者' }, { key: 'cost', label: '費用(円)' }, { key: 'odometer', label: '走行距離(km)' },
@@ -1079,8 +1200,19 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'fix-issue': {
+      const it = store.getState().issues.find((x) => x.id === id);
       store.upsertIssue({ id, status: 'fixed', fixedAt: L.todayISO() });
-      toast('対応済みにしました');
+      toast(it?.accident ? '修理済みにしました' : '対応済みにしました');
+      break;
+    }
+    case 'return-loaner': {
+      const v = store.getVehicle(id);
+      if (!v) break;
+      const msg = v.loaner ? `代車(${L.loanerLabel(v.loaner, store.getState().vehicles)})を返却し、${v.driverName} の車両を「稼働中」に戻します。` : `${v.driverName} の車両を「稼働中」に戻します。`;
+      if (confirm(msg)) {
+        store.upsertVehicle({ id, status: 'active', loaner: null });
+        toast('稼働中に戻しました');
+      }
       break;
     }
     case 'add-record': openRecordForm(null, el.dataset.vehicle || ui.maintenance.vehicleId || ''); break;
@@ -1131,7 +1263,7 @@ document.addEventListener('click', (e) => {
       break;
     case 'remove-base': {
       const s = store.getState().settings;
-      if (s.bases.length <= 1) { toast('拠点は 1 つ以上必要です', true); break; }
+      if (s.bases.length <= 1) { toast('チームは 1 つ以上必要です', true); break; }
       store.updateSettings({ bases: s.bases.filter((b) => b !== el.dataset.value) });
       break;
     }
@@ -1152,7 +1284,7 @@ document.addEventListener('submit', (e) => {
   if (!value) return;
   const s = store.getState().settings;
   if (form.dataset.form === 'add-base') {
-    if (s.bases.includes(value)) return toast('同じ拠点があります', true);
+    if (s.bases.includes(value)) return toast('同じチームがあります', true);
     store.updateSettings({ bases: [...s.bases, value] });
   } else if (form.dataset.form === 'add-type') {
     if (s.types.includes(value)) return toast('同じ種別があります', true);

@@ -41,7 +41,7 @@ test('odometerLevel: 残り距離で判定', () => {
 });
 
 const car = (over = {}) => ({
-  id: 'v1', code: 'V-001', plate: '品川 400 あ 12-34', status: 'active',
+  id: 'v1', driverName: '佐藤 太郎', plate: '品川 400 あ 12-34', status: 'active',
   inspectionExpiry: '2027-06-01', jibaisekiExpiry: '2027-06-20', insuranceExpiry: '2027-01-15',
   odometer: 50000, ...over,
 });
@@ -80,11 +80,11 @@ test('sortAlerts: 重いもの → 日数が少ないもの の順', () => {
 
 test('filterVehicles: 空白とハイフンを無視して検索、拠点・ステータスで絞る', () => {
   const list = [
-    car({ id: 'a', code: 'V-001', plate: '品川 400 あ 12-34', base: '本社', driver: '佐藤' }),
-    car({ id: 'b', code: 'V-002', plate: '横浜 100 か 56-78', base: '横浜', status: 'repair' }),
+    car({ id: 'a', driverName: '佐藤 太郎', plate: '品川 400 あ 12-34', base: '本社', qr: 'KV-1001' }),
+    car({ id: 'b', driverName: '鈴木 花子', plate: '横浜 100 か 56-78', base: '横浜', status: 'repair', qr: 'KV-1002' }),
   ];
   assert.deepEqual(L.filterVehicles(list, { q: '1234' }).map((v) => v.id), ['a']);
-  assert.deepEqual(L.filterVehicles(list, { q: 'v002' }).map((v) => v.id), ['b']);
+  assert.deepEqual(L.filterVehicles(list, { q: 'kv1002' }).map((v) => v.id), ['b']);
   assert.deepEqual(L.filterVehicles(list, { q: '佐藤' }).map((v) => v.id), ['a']);
   assert.deepEqual(L.filterVehicles(list, { base: '横浜' }).map((v) => v.id), ['b']);
   assert.deepEqual(L.filterVehicles(list, { status: 'repair' }).map((v) => v.id), ['b']);
@@ -112,8 +112,11 @@ test('sumCost / monthlyCosts / costByType', () => {
 
 test('validateVehicle / validateRecord', () => {
   assert.deepEqual(L.validateVehicle(car()), []);
-  const errs = L.validateVehicle({ code: '', plate: '', status: 'x', inspectionExpiry: '2026-13-01', odometer: -5 });
+  const errs = L.validateVehicle({ driverName: '', plate: '', status: 'x', inspectionExpiry: '2026-13-01', odometer: -5 });
   assert.equal(errs.length, 5);
+  assert.ok(L.validateVehicle(car({ loaner: { type: 'rental', plate: '' } })).some((e) => e.includes('借代車')));
+  assert.ok(L.validateVehicle(car({ loaner: { type: 'own', vehicleId: 'v1' } })).some((e) => e.includes('自分自身')));
+  assert.deepEqual(L.validateVehicle(car({ loaner: { type: 'own', vehicleId: 'v2' } })), []);
   assert.deepEqual(L.validateRecord({ vehicleId: 'v1', date: '2026-10-18', type: 'オイル交換', cost: 7000, odometer: 50000, nextDate: '2027-04-18', nextOdometer: 55000 }), []);
   const rErrs = L.validateRecord({ vehicleId: '', date: 'x', type: '', cost: -1, odometer: '', nextDate: '2026-01-01', nextOdometer: 'abc' });
   assert.ok(rErrs.length >= 5);
@@ -162,4 +165,18 @@ test('sortIssues: 未対応 → 緊急度 → 新しい順', () => {
 test('validateIssue', () => {
   assert.deepEqual(L.validateIssue({ vehicleId: 'v', part: 'hood', severity: 'mid', title: 'x', reportedAt: '2026-10-18', status: 'open' }), []);
   assert.equal(L.validateIssue({ vehicleId: '', part: 'nope', severity: 'z', title: '', reportedAt: '' }).length, 5);
+});
+
+test('loanerLabel', () => {
+  const vs = [{ id: 'x', plate: '品川 480 い 1-23', driverName: '鈴木' }];
+  assert.equal(L.loanerLabel({ type: 'rental', plate: '足立 480 れ 12-34' }), '借代車 足立 480 れ 12-34');
+  assert.equal(L.loanerLabel({ type: 'own', vehicleId: 'x' }, vs), '自社代車 品川 480 い 1-23');
+  assert.equal(L.loanerLabel(null), '');
+});
+
+test('validateIssue: 事故記録の日時', () => {
+  const base = { vehicleId: 'v', part: 'rear', severity: 'high', title: 'x', reportedAt: '2026-10-18', status: 'open' };
+  assert.deepEqual(L.validateIssue({ ...base, accident: { datetime: '2026-10-18T10:40' } }), []);
+  assert.deepEqual(L.validateIssue({ ...base, accident: { datetime: '' } }), []);
+  assert.ok(L.validateIssue({ ...base, accident: { datetime: '18/10/2026' } }).some((e) => e.includes('日時')));
 });

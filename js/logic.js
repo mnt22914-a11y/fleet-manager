@@ -187,7 +187,7 @@ export function filterVehicles(vehicles, { q = '', base = '', status = '' } = {}
     if (base && v.base !== base) return false;
     if (status && v.status !== status) return false;
     if (!nq) return true;
-    const hay = norm([v.code, v.name, v.plate, v.maker, v.model, v.modelCode, v.vin, v.driver, v.note].join(' '));
+    const hay = norm([v.driverName, v.plate, v.maker, v.modelCode, v.qr, v.note, v.loaner?.plate].join(' '));
     return hay.includes(nq);
   });
 }
@@ -240,10 +240,28 @@ export function countByStatus(vehicles) {
 
 // ---- 検証 ----
 
+export const ACCIDENT_TYPES = ['追突(自車が後ろから)', '追突された', '接触(すれ違い・車線変更)', '出会い頭', '右左折時', 'バック時', '自損(単独)', '駐車中(当て逃げ含む)', 'その他'];
+
+export const LOANER_TYPE = { own: '自社代車', rental: '借代車' };
+
+/** 代車の表示名。own は車両一覧から探して渡す。 */
+export function loanerLabel(loaner, vehicles = []) {
+  if (!loaner) return '';
+  if (loaner.type === 'rental') return `借代車 ${loaner.plate || ''}`.trim();
+  const v = vehicles.find((x) => x.id === loaner.vehicleId);
+  return v ? `自社代車 ${v.plate}` : '自社代車';
+}
+
 export function validateVehicle(v) {
   const errors = [];
-  if (!v.code?.trim()) errors.push('管理番号を入力してください');
+  if (!v.driverName?.trim()) errors.push('ドライバー名を入力してください');
   if (!v.plate?.trim()) errors.push('ナンバーを入力してください');
+  if (v.loaner) {
+    if (!LOANER_TYPE[v.loaner.type]) errors.push('代車の種類を選んでください');
+    if (v.loaner.type === 'rental' && !v.loaner.plate?.trim()) errors.push('借代車のナンバーを入力してください');
+    if (v.loaner.type === 'own' && !v.loaner.vehicleId) errors.push('自社代車の車両を選んでください');
+    if (v.loaner.type === 'own' && v.loaner.vehicleId === v.id) errors.push('自分自身を代車にはできません');
+  }
   for (const [k, label] of [
     ['inspectionExpiry', '車検満了日'], ['jibaisekiExpiry', '自賠責満了日'],
     ['insuranceExpiry', '任意保険満了日'], ['odometerDate', '走行距離の記録日'],
@@ -411,7 +429,10 @@ export function validateIssue(i) {
   if (!PART_BY_ID[i.part]) errors.push('部位を選んでください');
   if (!SEVERITY[i.severity]) errors.push('緊急度を選んでください');
   if (!i.title?.trim()) errors.push('異常の内容を入力してください');
-  if (!isValidDate(i.reportedAt)) errors.push('発見日を入力してください');
+  if (!isValidDate(i.reportedAt)) errors.push('発生日を入力してください');
+  if (i.accident) {
+    if (i.accident.datetime && !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(i.accident.datetime)) errors.push('事故の日時が正しくありません');
+  }
   if (i.status === 'fixed' && i.fixedAt && !isValidDate(i.fixedAt)) errors.push('対応日の日付が正しくありません');
   return errors;
 }

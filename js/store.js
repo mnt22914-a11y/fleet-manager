@@ -19,6 +19,19 @@ function normalize(raw) {
   for (const i of s.issues) {
     if (i.part === 'lights') { i.part = 'other'; if (!/^\(ランプ\)/.test(i.title || '')) i.title = `(ランプ) ${i.title || ''}`.trim(); }
   }
+  // 2026-10-19: 車両の項目変更(管理番号→ドライバー名、車台番号→車両QR)。ピンは配列に
+  for (const v of s.vehicles) {
+    if (v.driverName == null) v.driverName = v.driver || v.code || '';
+    if (v.qr == null && v.vin) v.qr = v.vin;
+    if (v.insurancePhone == null) v.insurancePhone = '';
+    if (v.loaner === undefined) v.loaner = null;
+    delete v.code; delete v.name; delete v.model; delete v.driver; delete v.vin;
+  }
+  for (const i of s.issues) {
+    if (!Array.isArray(i.pins)) i.pins = i.pin ? [i.pin] : [];
+    delete i.pin;
+    if (i.accident === undefined) i.accident = null;
+  }
   s.settings = { ...DEFAULT_SETTINGS, ...(raw.settings || {}) };
   if (!Array.isArray(s.settings.bases) || s.settings.bases.length === 0) s.settings.bases = [...DEFAULT_SETTINGS.bases];
   if (!Array.isArray(s.settings.types) || s.settings.types.length === 0) s.settings.types = [...DEFAULT_SETTINGS.types];
@@ -72,6 +85,7 @@ export function upsertVehicle(input) {
 
 export function removeVehicle(id) {
   state.vehicles = state.vehicles.filter((v) => v.id !== id);
+  for (const v of state.vehicles) if (v.loaner?.type === 'own' && v.loaner.vehicleId === id) v.loaner = null;
   state.records = state.records.filter((r) => r.vehicleId !== id);
   state.issues = state.issues.filter((i) => i.vehicleId !== id);
   persist();

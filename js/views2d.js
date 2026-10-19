@@ -78,16 +78,17 @@ function imageView(key, status, selected, { side = null, mirror = false, pins = 
     const st = status[part];
     return `<g class="marker sev-${st.severity}" transform="translate(${px.toFixed(1)} ${py.toFixed(1)})"><circle class="ring" r="${mr}"/><circle class="ring ring-2" r="${mr}"/><circle class="dot" r="${mr}"/><text y="${Math.round(mr * 0.38)}" font-size="${Math.round(mr * 1.3)}">${st.count}</text></g>`;
   }).join('');
-  const pinSVGs = pins.map((pn) => pinSVG(w, h, pn, `sev-${pn.severity || 'mid'}${pn.selected ? ' selected' : ''}`, pn.label || '')).join('');
+  const pinSVGs = pins.map((pn) => pinSVG(w, h, pn, `sev-${pn.severity || 'mid'}${pn.selected ? ' selected' : ''}${pn.accident ? ' accident' : ''}`, pn.label || '')).join('');
   const imageTag = `<image href="${v.img}" width="${w}" height="${h}" preserveAspectRatio="none"${mirror ? ` transform="scale(-1 1) translate(-${w} 0)"` : ''}/>`;
   return `<svg viewBox="0 0 ${w} ${h}" class="view-svg view-img${pick ? ' pick-svg' : ''}" role="img"${pick ? ` data-pick-view="${key}"` : ''}>${imageTag}${parts}${markerSVG}${pinSVGs}</svg>`;
 }
 
 /** 記録フォーム用: 1 つの面を、対象の部位を青く示した状態で描く。pin があればそこにピン。 */
-export function renderPickView(viewKey, part, pin) {
+export function renderPickView(viewKey, part, pins = []) {
   const v = VIEWS[viewKey];
   if (!v) return '';
-  return imageView(v.img, {}, '', { side: v.side, mirror: v.mirror, target: part, pick: true, pins: pin ? [{ ...pin, severity: 'pick' }] : [] });
+  const list = pins.map((pn, idx) => ({ ...pn, severity: 'pick', label: pins.length > 1 ? String(idx + 1) : '' })).filter((pn) => pn.view === viewKey);
+  return imageView(v.img, {}, '', { side: v.side, mirror: v.mirror, target: part, pick: true, pins: list });
 }
 
 /** その面に描かれている部位の一覧(面ごとの異常件数に使う)。 */
@@ -99,11 +100,13 @@ function partsOf(key, side) {
 export function renderViews(issues, selected = '') {
   const status = partStatus(issues);
   const open = issues.filter((i) => i.status === 'open');
-  const unpinned = new Set(open.filter((i) => !i.pin).map((i) => i.part));
+  const unpinned = new Set(open.filter((i) => !(i.pins || []).length).map((i) => i.part));
   const pinsByView = {};
   open.forEach((i, idx) => {
-    if (!i.pin || !VIEWS[i.pin.view]) return;
-    (pinsByView[i.pin.view] ||= []).push({ x: i.pin.x, y: i.pin.y, severity: i.severity, selected: selected && i.part === selected, label: String(open.indexOf(i) + 1) });
+    for (const pn of i.pins || []) {
+      if (!VIEWS[pn.view]) continue;
+      (pinsByView[pn.view] ||= []).push({ x: pn.x, y: pn.y, severity: i.severity, selected: selected && i.part === selected, label: String(idx + 1), accident: Boolean(i.accident) });
+    }
   });
   return `<div class="views">${Object.entries(VIEWS).map(([key, v]) => {
     const parts = partsOf(v.img, v.side);

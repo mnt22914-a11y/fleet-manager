@@ -6,12 +6,14 @@
 ## できること
 
 - **ダッシュボード**: 車両数、要対応・注意のアラート件数、今月の整備費。車検・自賠責・任意保険・次回整備の期限を近い順に一覧
-- **車両台帳**: **駐車場ビュー**(拠点ごとの駐車区画に軽バンが並び、状態の色・異常件数・期限アラートが乗る)と一覧表を切り替え。検索、拠点/ステータスで絞り込み、列で並び替え、CSV 書き出し
+- **車両台帳**: **駐車場ビュー**(チームごとの駐車区画に軽バンが並び、状態の色・異常件数・期限アラート・代車使用中が乗る)と一覧表を切り替え。検索、チーム/ステータスで絞り込み、列で並び替え、CSV 書き出し
 - **車両詳細**: 期限タイル、**軽バンの 5 面図(図面画像そのまま。左側面・右側面・上面・正面・背面)**で部位ごとの異常を表示(赤 = 未対応の異常、青枠 = 選択中。面ごとに異常件数)、車両情報、次回整備の目安、整備履歴、整備費の集計
 - **異常の記録**: 場所(ランプ・タイヤ・ミラー・スライドドア・バンパー…)→ 左右前後 → 図の上をクリックしてピン、の順に選んで登録。緊急度(至急/早めに/様子見)付き。**写真を添付できる**(縮小して IndexedDB に保存、タップで拡大)。異常のある部位は図の上で赤く表示、ピンを打った異常は番号付きのピンでその位置に表示。部位をクリックすると絞り込み。対応済みにすると消える
 - **整備記録にも写真**を添付できる。バックアップ JSON には写真も含まれる
 - **整備記録**: いつ・何を・どこで・いくらで・何 km のときに。次回の目安(日付 or 距離)を入れるとアラートに出る。「車検」の記録からは車検満了日を台帳に反映できる
-- **設定**: アラート基準(日数・距離)、拠点、整備種別、JSON バックアップ/復元、サンプルデータ、全削除
+- **代車**: 修理中の車両に代車を登録(自社代車 = 管理車両から選ぶ / 借代車 = ナンバーだけ)。詳細と駐車場に「代車使用中」を表示し、貸した側にも「○○の代車として貸出中」を表示。「代車を返却して稼働に戻す」で元に戻る
+- **事故記録**: 異常の登録で「事故記録として残す」にチェックすると、事故の状況(日時・場所・形態・管轄警察署)、自分の情報(運転手・ナンバー・損傷)、相手の情報(氏名・電話・ナンバー・損傷)と写真を記録。傷の場所は図に複数ピン。修理済み/未修理を管理し、車両詳細の「事故記録」カードに保険用の一覧として残る
+- **設定**: アラート基準(日数・距離)、チーム、整備種別、JSON バックアップ/復元、サンプルデータ、全削除
 
 ## 使い方
 
@@ -51,14 +53,18 @@ node --test tests/*.test.mjs
 ## データ構造
 
 ```js
-vehicle = { id, code, name, plate, maker, model, modelCode, vin, firstRegistration,
-            status: 'active'|'repair'|'idle'|'retired', base, driver,
-            inspectionExpiry, jibaisekiExpiry, insuranceExpiry, insuranceCompany,
+vehicle = { id, driverName, plate, qr, maker, modelCode, firstRegistration,
+            status: 'active'|'repair'|'idle'|'retired', base(チーム),
+            loaner: null | { type: 'own'|'rental', since, vehicleId, plate, note },
+            inspectionExpiry, jibaisekiExpiry, insuranceExpiry, insuranceCompany, insurancePhone,
             odometer, odometerDate, note, createdAt, updatedAt }
 record  = { id, vehicleId, date, type, title, detail, vendor, cost, odometer,
             nextDate, nextOdometer, note, createdAt, updatedAt }
 issue   = { id, vehicleId, part, severity: 'high'|'mid'|'low', title, detail, photos: [photoId],
-            reportedAt, status: 'open'|'fixed', fixedAt, createdAt, updatedAt }
+            pins: [{ view, x, y }], reportedAt(発生日), status: 'open'|'fixed', fixedAt,
+            accident: null | { datetime, place, type, police, driverName, plate, ownDamage,
+                               otherName, otherPhone, otherPlate, otherDamage },
+            createdAt, updatedAt }
 // record にも photos: [photoId]。写真本体は IndexedDB(fleet-photos)に Blob で保存
 settings = { alertDays, warnDays, odometerWarnKm, bases: [], types: [], companyName }
 ```
