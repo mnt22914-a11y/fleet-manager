@@ -322,7 +322,7 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
   .card { box-shadow: none; }
 }
 
-/* ---- 車体の 5 面図と異常 ---- */
+/* ---- 車体の 5 面図(図面画像 + 部位の領域)と異常 ---- */
 .body-stack { display: flex; flex-direction: column; gap: 14px; }
 .views-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .views { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto auto; gap: 12px; }
@@ -333,35 +333,7 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
 .view-count { font-size: 11px; font-weight: 600; color: var(--muted); }
 .view.has-issue .view-count { color: var(--critical); }
 .view-svg { width: 100%; height: auto; display: block; flex: 1; }
-.view-svg .body-bg { fill: var(--surface-2); stroke: var(--text-2); stroke-width: 1.2; stroke-linejoin: round; }
 .part { cursor: pointer; }
-.part .shape { fill: var(--surface); stroke: var(--text-2); stroke-width: 0.9; stroke-linejoin: round; transition: fill 0.15s, stroke 0.15s; }
-.part .shape.glass, .glass.deco { fill: #c6d7e4; stroke: #4a5c6c; stroke-width: 0.8; }
-.part .shape.tire { fill: #262a2f; stroke: #111; }
-.part .shape.trim { fill: #30353b; stroke: #111; }
-.part .shape.lamp { fill: #f1f4f7; stroke: #4a5c6c; }
-.part .shape.tail { fill: #d9534a; stroke: #7a1f1f; }
-.part:hover .shape { fill: var(--accent-soft); stroke: var(--accent); }
-.part.has-issue .shape { fill: #f2b3ab; stroke: var(--critical); stroke-width: 1.2; }
-.part.has-issue .shape.tire, .part.has-issue .shape.trim { fill: #c0392b; stroke: #7a1f1f; }
-.part.has-issue:hover .shape { fill: #ec9a90; }
-.part.selected .shape { stroke: var(--accent); stroke-width: 2.6; }
-.part .plabel { font-size: 8px; fill: var(--text-2); text-anchor: middle; pointer-events: none; font-weight: 600; }
-.part.has-issue .plabel { fill: #6b1510; }
-.view-svg .arch { fill: var(--surface-2); stroke: var(--text-2); stroke-width: 0.9; }
-.view-svg .deco { pointer-events: none; }
-.view-svg .trim.deco { fill: #30353b; stroke: none; }
-.view-svg .lamp.deco { fill: #f1f4f7; stroke: #4a5c6c; stroke-width: 0.6; }
-.view-svg .tail.deco { fill: #d9534a; stroke: none; }
-.view-svg .plate.deco { fill: #f7f7f2; stroke: #6b7480; stroke-width: 0.6; }
-.view-svg .recess.deco { fill: #e4e8ec; stroke: #9aa3ad; stroke-width: 0.6; }
-.view-svg .rim { fill: #b9c0c7; stroke: #6b7480; stroke-width: 0.6; pointer-events: none; }
-.view-svg .seam { stroke: #4a5560; stroke-width: 0.8; fill: none; pointer-events: none; }
-.view-svg .crease { stroke: #9aa3ad; stroke-width: 0.8; fill: none; pointer-events: none; }
-.view-svg .bead { stroke: #cfd6dd; stroke-width: 0.8; fill: none; pointer-events: none; }
-.view-svg .bar { stroke: #e4e8ec; stroke-width: 1.2; fill: none; pointer-events: none; }
-.view-svg .moulding { stroke: #7d8794; stroke-width: 1.4; fill: none; pointer-events: none; }
-.view-svg .dirlabel { font-size: 8px; fill: var(--muted); pointer-events: none; }
 .marker { pointer-events: none; --mk: var(--critical); }
 .marker .dot { fill: var(--mk); }
 .marker text { fill: #fff; font-size: 10px; font-weight: 700; text-anchor: middle; }
@@ -369,6 +341,16 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
 .marker .ring-2 { animation-delay: 1s; }
 @keyframes ring { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(3); opacity: 0; } }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+/* 図面画像の上の領域: ふだんは透明、異常は赤、選択は青枠 */
+.view-img .part .shape { fill: rgba(31, 78, 121, 0); stroke: none; transition: fill 0.15s; }
+.view-img .part:hover .shape { fill: rgba(31, 78, 121, 0.18); stroke: var(--accent); stroke-width: 2; }
+.view-img .part.has-issue .shape { fill: rgba(224, 53, 43, 0.42); stroke: var(--critical); stroke-width: 2.5; }
+.view-img .part.has-issue:hover .shape { fill: rgba(224, 53, 43, 0.55); }
+.view-img .part.selected .shape { stroke: var(--accent); stroke-width: 5; fill: rgba(31, 78, 121, 0.16); }
+.view-img .part.selected.has-issue .shape { fill: rgba(224, 53, 43, 0.42); }
+.view-img .marker .ring { stroke-width: 3; }
+.view-img.debug .part .shape { fill: rgba(31, 78, 121, 0.15); stroke: var(--accent); stroke-width: 2; }
+.view-title small { font-weight: 500; margin-left: 4px; }
 .part-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .part-chips::before { content: "図に描けない部位:"; font-size: 11.5px; color: var(--muted); margin-right: 4px; }
 .part-chip { border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: 999px; padding: 4px 11px; font-size: 12px; cursor: pointer; transition: background 0.2s; }
