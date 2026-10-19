@@ -16,6 +16,8 @@ function resolvePart(id, side) {
   if (id === 'wheel_r') return side === 'l' ? 'wheel_rl' : 'wheel_rr';
   if (id === 'mirror') return side === 'l' ? 'mirror_l' : 'mirror_r';
   if (id === 'side') return side === 'l' ? 'side_l' : 'side_r';
+  if (id === 'lamp_f') return side === 'l' ? 'lamp_fl' : 'lamp_fr';
+  if (id === 'lamp_r') return side === 'l' ? 'lamp_rl' : 'lamp_rr';
   return id;
 }
 

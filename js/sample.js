@@ -141,7 +141,8 @@ export function buildSample(today = todayISO()) {
   });
   addIssue(0, 'side_l', 'mid', '左スライドドアが閉まりにくい', 'レールにゴミが噛んでいる可能性。閉めるときに 2 回押す必要あり', 3);
   addIssue(0, 'wheel_rr', 'low', '右後タイヤの空気が抜けやすい', '週 1 回 20kPa ほど下がる。バルブか釘の可能性', 9);
-  addIssue(0, 'lights', 'low', 'ナンバー灯が切れている', '', 1);
+  addIssue(0, 'lamp_rl', 'low', '左テールランプのナンバー灯が切れている', '', 1);
+  addIssue(5, 'lamp_fr', 'mid', '右ヘッドライトの内側が曇っている', '雨の後に水滴が溜まる。パッキン不良の疑い', 4);
   addIssue(11, 'front_bumper', 'high', 'フロントバンパー破損(接触事故)', '10/14 荷下ろし時にポールへ接触。左角が割れて垂れ下がっている', 4);
   addIssue(11, 'hood', 'mid', 'アイドリングが不安定', '信号待ちで回転数が上下する', 12);
   addIssue(5, 'windshield', 'high', 'フロントガラスにヒビ(運転席側 15cm)', '飛び石。視界にかかるため早急に交換', 2);

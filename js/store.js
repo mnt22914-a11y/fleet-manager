@@ -15,6 +15,10 @@ function normalize(raw) {
   s.vehicles = Array.isArray(raw.vehicles) ? raw.vehicles : [];
   s.records = Array.isArray(raw.records) ? raw.records : [];
   s.issues = Array.isArray(raw.issues) ? raw.issues : [];
+  // 2026-10-19: 「ランプ類」を左右前後の 4 部位に分けた。古い記録は「その他」に移し、内容に印を付ける
+  for (const i of s.issues) {
+    if (i.part === 'lights') { i.part = 'other'; if (!/^\(ランプ\)/.test(i.title || '')) i.title = `(ランプ) ${i.title || ''}`.trim(); }
+  }
   s.settings = { ...DEFAULT_SETTINGS, ...(raw.settings || {}) };
   if (!Array.isArray(s.settings.bases) || s.settings.bases.length === 0) s.settings.bases = [...DEFAULT_SETTINGS.bases];
   if (!Array.isArray(s.settings.types) || s.settings.types.length === 0) s.settings.types = [...DEFAULT_SETTINGS.types];
