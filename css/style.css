@@ -308,8 +308,6 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
   .alert-item { grid-template-columns: 4px 1fr auto; gap: 10px; padding: 10px 12px; }
   .deadline-tiles { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
-  .views { grid-template-columns: 1fr 1fr; }
-  .view-top { grid-column: auto; grid-row: auto; }
   .toolbar input[type="search"] { width: 100%; }
   .kpi .value { font-size: 22px; }
   .bars { grid-template-columns: repeat(6, 1fr); }
@@ -317,7 +315,6 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
 }
 @media (max-width: 480px) {
   .grid-4 { grid-template-columns: 1fr 1fr; }
-  .views { grid-template-columns: 1fr; }
 }
 @media print {
   #sidebar, #tabbar, .toolbar, .btn, .actions { display: none !important; }
@@ -379,6 +376,13 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
 .part-chip b { margin-left: 2px; }
 .part-chip.sev-high, .part-chip.sev-mid, .part-chip.sev-low { background: var(--critical-soft); border-color: var(--critical); color: var(--critical); }
 .part-chip.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (max-width: 860px) {
+  .views { grid-template-columns: 1fr 1fr; }
+  .view-top { grid-column: auto; grid-row: auto; }
+}
+@media (max-width: 480px) {
+  .views { grid-template-columns: 1fr; }
+}
 
 .badge.sev-high { background: var(--critical-soft); color: var(--critical); }
 .badge.sev-mid { background: var(--warning-soft); color: var(--warning); }
