@@ -349,6 +349,26 @@ export const PARTS = [
 
 export const PART_BY_ID = Object.fromEntries(PARTS.map((p) => [p.id, p]));
 
+/** 記録のときの選び方: まず場所の種類、次に左右前後(ある場合)。variants の 2 つ目が表示名。 */
+export const PART_GROUPS = [
+  { id: 'lamp', label: 'ランプ', variants: [['lamp_fl', '左前'], ['lamp_fr', '右前'], ['lamp_rl', '左後'], ['lamp_rr', '右後']] },
+  { id: 'wheel', label: 'タイヤ・ブレーキ', variants: [['wheel_fl', '左前'], ['wheel_fr', '右前'], ['wheel_rl', '左後'], ['wheel_rr', '右後']] },
+  { id: 'mirror', label: 'ミラー', variants: [['mirror_l', '左'], ['mirror_r', '右']] },
+  { id: 'slide', label: 'スライドドア', variants: [['side_l', '左'], ['side_r', '右']] },
+  { id: 'bumper', label: 'バンパー', variants: [['front_bumper', '前'], ['rear', '後(バックドア含む)']] },
+  { id: 'windshield', label: 'フロントガラス・ワイパー', variants: [['windshield', '']] },
+  { id: 'hood', label: 'フロント周り(エンジン・フェンダー)', variants: [['hood', '']] },
+  { id: 'cabin', label: '運転席・前ドア', variants: [['cabin', '']] },
+  { id: 'cargo', label: '荷室・ルーフ', variants: [['cargo', '']] },
+  { id: 'underbody', label: '下回り・足回り', variants: [['underbody', '']] },
+  { id: 'battery', label: 'バッテリー・電装', variants: [['battery', '']] },
+  { id: 'other', label: 'その他', variants: [['other', '']] },
+];
+
+export function groupOfPart(partId) {
+  return PART_GROUPS.find((g) => g.variants.some(([id]) => id === partId)) || null;
+}
+
 export const SEVERITY = {
   high: { label: '至急', order: 0 },   // 走行に支障がある
   mid: { label: '早めに', order: 1 },  // 近いうちに直す

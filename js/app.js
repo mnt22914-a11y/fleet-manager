@@ -4,7 +4,7 @@ import * as store from './store.js';
 import * as L from './logic.js';
 import { buildSample } from './sample.js';
 import * as photos from './photos.js';
-import { renderViews } from './views2d.js';
+import { renderViews, renderPickView, viewsForPart, VIEWS } from './views2d.js';
 
 const $app = document.getElementById('app');
 const $dialogRoot = document.getElementById('dialog-root');
@@ -469,15 +469,18 @@ function renderPartChips(status, selected) {
 
 function issueItem(i, { showVehicle = false, showPart = true } = {}) {
   const v = showVehicle ? store.getVehicle(i.vehicleId) : null;
-  const meta = [showVehicle ? esc(vehicleLabel(v)) : '', showPart ? esc(L.partLabel(i.part)) : '', `発見 ${L.fmtDate(i.reportedAt)}`, i.status === 'fixed' ? `対応 ${L.fmtDate(i.fixedAt)}` : ''].filter(Boolean).join(' ・ ');
+  const meta = [showVehicle ? esc(vehicleLabel(v)) : '', showPart ? esc(L.partLabel(i.part)) : '', i.pin && VIEWS[i.pin.view] ? `📍 ${VIEWS[i.pin.view].title}` : '', `発見 ${L.fmtDate(i.reportedAt)}`, i.status === 'fixed' ? `対応 ${L.fmtDate(i.fixedAt)}` : ''].filter(Boolean).join(' ・ ');
   const action = showVehicle ? `data-action="open-vehicle-part" data-id="${esc(i.vehicleId)}" data-part="${esc(i.part)}"` : `data-action="edit-issue" data-id="${esc(i.id)}"`;
+  const num = i.status === 'open' && !showVehicle && i._num ? `<span class="issue-num">${i._num}</span>` : '';
   return `<div class="issue-item ${i.status}" ${action}>
-    <div><div class="t">${badgeSeverity(i.severity)} ${esc(i.title)}</div>${i.detail ? `<div class="d">${esc(i.detail)}</div>` : ''}<div class="m">${meta}</div>${showVehicle ? '' : photoStrip(i.photos)}</div>
+    <div><div class="t">${num}${badgeSeverity(i.severity)} ${esc(i.title)}</div>${i.detail ? `<div class="d">${esc(i.detail)}</div>` : ''}<div class="m">${meta}</div>${showVehicle ? '' : photoStrip(i.photos)}</div>
     ${i.status === 'open' && !showVehicle ? `<div><button class="btn small" data-action="fix-issue" data-id="${esc(i.id)}">対応済みにする</button></div>` : ''}
   </div>`;
 }
 
 function renderIssuePanel(v, issues, selected, today) {
+  // 図のピンの番号 = 未対応の異常の通し番号(views2d と同じ並び)
+  issues.filter((i) => i.status === 'open').forEach((i, idx) => { i._num = idx + 1; });
   const list = L.sortIssues(selected ? issues.filter((i) => i.part === selected) : issues);
   const open = list.filter((i) => i.status === 'open');
   const fixed = list.filter((i) => i.status === 'fixed');
@@ -818,6 +821,7 @@ function openIssueForm(existing, presetVehicleId, presetPart) {
   const isNew = !existing;
   const vehicles = L.sortBy(state.vehicles.filter((v) => v.status !== 'retired' || v.id === i.vehicleId), 'code');
   const lockVehicle = Boolean(presetVehicleId) || !isNew;
+  const g0 = L.groupOfPart(i.part);
   const html = `
     <form>
       <div class="dlg-head"><h2>${isNew ? '異常を登録' : '異常を編集'}</h2><button type="button" class="btn ghost small" data-dlg="cancel">閉じる</button></div>
@@ -826,7 +830,11 @@ function openIssueForm(existing, presetVehicleId, presetPart) {
         <input type="hidden" name="id" value="${esc(i.id || '')}">
         <div class="form-grid">
           ${field('vehicleId', '車両', `<select id="f-vehicleId" name="vehicleId" ${lockVehicle ? 'disabled' : ''} required>${!i.vehicleId ? opt('', '選んでください', true) : ''}${vehicles.map((v) => opt(v.id, `${vehicleLabel(v)}(${v.plate})`, v.id === i.vehicleId)).join('')}</select>${lockVehicle ? `<input type="hidden" name="vehicleId" value="${esc(i.vehicleId)}">` : ''}`, { required: true })}
-          ${field('part', '部位', `<select id="f-part" name="part" required>${!i.part ? opt('', '選んでください', true) : ''}${L.PARTS.map((p) => opt(p.id, p.label, p.id === i.part)).join('')}</select>`, { required: true })}
+          ${field('group', '場所', `<select id="f-group" name="group" required>${!g0 ? opt('', '選んでください', true) : ''}${L.PART_GROUPS.map((g) => opt(g.id, g.label, g0 && g.id === g0.id)).join('')}</select>`, { required: true, hint: '種類を選ぶと、次に左右前後を選べます' })}
+          <div class="field" id="variant-field"></div>
+          <input type="hidden" name="part" id="f-part" value="${esc(i.part || '')}">
+          <input type="hidden" name="pin" id="f-pin" value="${esc(i.pin ? JSON.stringify(i.pin) : '')}">
+          <div class="field full" id="pick-field"></div>
           ${field('severity', '緊急度', `<div class="seg">${Object.entries(L.SEVERITY).map(([k, v]) => `<label class="seg-item sev-${k}"><input type="radio" name="severity" value="${k}" ${i.severity === k ? 'checked' : ''}>${v.label}</label>`).join('')}</div>`, { required: true, hint: '至急 = 走行に支障 / 早めに = 近いうちに修理 / 様子見 = 記録のみ' })}
           ${field('reportedAt', '発見日', date('reportedAt', i.reportedAt, 'required'), { required: true })}
           ${field('title', '異常の内容', text('title', i.title, 'placeholder="左スライドドアが閉まりにくい" required'), { required: true, full: true })}
@@ -853,8 +861,12 @@ function openIssueForm(existing, presetVehicleId, presetPart) {
       reportedAt: d.reportedAt,
       status: d.status || 'open',
       fixedAt: d.status === 'fixed' ? (d.fixedAt || L.todayISO()) : '',
+      pin: null,
     };
+    if (d.pin) { try { const pn = JSON.parse(d.pin); if (VIEWS[pn.view] && pn.x >= 0 && pn.x <= 1 && pn.y >= 0 && pn.y <= 1) issue.pin = { view: pn.view, x: Number(pn.x.toFixed(4)), y: Number(pn.y.toFixed(4)) }; } catch { /* ピンなし */ } }
     const errors = L.validateIssue(issue);
+    const grp = L.PART_GROUPS.find((x) => x.id === d.group);
+    if (grp && grp.variants.length > 1 && !grp.variants.some(([id]) => id === issue.part)) errors.unshift('左右(前後)を選んでください');
     if (errors.length) return errors;
     issue.photos = await photoField.collect();
     store.upsertIssue(issue);
@@ -869,7 +881,62 @@ function openIssueForm(existing, presetVehicleId, presetPart) {
       close();
     }
   });
-  photoField = attachPhotoField($dialogRoot.querySelector('form'), i.photos || []);
+  const form = $dialogRoot.querySelector('form');
+  photoField = attachPhotoField(form, i.photos || []);
+  attachPartPicker(form);
+}
+
+/** 場所 → 左右前後 → 図でピン、の 3 段を動かす。値は hidden の part / pin に入る。 */
+function attachPartPicker(form) {
+  const groupSel = form.querySelector('#f-group');
+  const partIn = form.querySelector('#f-part');
+  const pinIn = form.querySelector('#f-pin');
+  const variantBox = form.querySelector('#variant-field');
+  const pickBox = form.querySelector('#pick-field');
+  let pickView = '';
+  const getPin = () => { try { return pinIn.value ? JSON.parse(pinIn.value) : null; } catch { return null; } };
+
+  function renderVariants() {
+    const grp = L.PART_GROUPS.find((x) => x.id === groupSel.value);
+    if (!grp) { variantBox.innerHTML = ''; return; }
+    if (grp.variants.length === 1) {
+      partIn.value = grp.variants[0][0];
+      variantBox.innerHTML = '';
+      return;
+    }
+    if (!grp.variants.some(([id]) => id === partIn.value)) partIn.value = '';
+    variantBox.innerHTML = `<label>左右・前後</label><div class="seg variants">${grp.variants.map(([id, label]) => `<button type="button" class="seg-btn ${partIn.value === id ? 'on' : ''}" data-variant="${id}">${esc(label)}</button>`).join('')}</div>`;
+  }
+  function renderPick() {
+    const part = partIn.value;
+    const views = part ? viewsForPart(part) : [];
+    if (!views.length) { pickBox.innerHTML = ''; return; }
+    if (!views.includes(pickView)) pickView = (getPin() && views.includes(getPin().view)) ? getPin().view : views[0];
+    const pin = getPin();
+    pickBox.innerHTML = `<label>図で場所を指す(任意)</label>
+      <div class="pick-tabs">${views.map((k) => `<button type="button" class="seg-btn ${k === pickView ? 'on' : ''}" data-pick-tab="${k}">${VIEWS[k].title}</button>`).join('')}
+        <span class="spacer"></span>${pin ? `<span class="muted" style="font-size:12px">📍 ${VIEWS[pin.view].title}</span> <button type="button" class="btn ghost small" data-pick-clear>ピンを消す</button>` : '<span class="muted" style="font-size:12px">青い部位の中をクリックすると、その位置にピンを打ちます</span>'}
+      </div>
+      <div class="pick-wrap">${renderPickView(pickView, part, pin && pin.view === pickView ? pin : null)}</div>`;
+  }
+  groupSel.addEventListener('change', () => { partIn.value = ''; pinIn.value = ''; pickView = ''; renderVariants(); renderPick(); });
+  form.addEventListener('click', (e) => {
+    const vb = e.target.closest('[data-variant]');
+    if (vb) { partIn.value = vb.dataset.variant; pinIn.value = ''; pickView = ''; renderVariants(); renderPick(); return; }
+    const tb = e.target.closest('[data-pick-tab]');
+    if (tb) { pickView = tb.dataset.pickTab; renderPick(); return; }
+    if (e.target.closest('[data-pick-clear]')) { pinIn.value = ''; renderPick(); return; }
+    const svg = e.target.closest('svg[data-pick-view]');
+    if (svg) {
+      const r = svg.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      if (x < 0 || x > 1 || y < 0 || y > 1) return;
+      pinIn.value = JSON.stringify({ view: svg.dataset.pickView, x: Number(x.toFixed(4)), y: Number(y.toFixed(4)) });
+      renderPick();
+    }
+  });
+  renderVariants();
+  renderPick();
 }
 
 // ---- 写真 ----

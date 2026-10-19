@@ -508,3 +508,29 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
 dialog.lightbox { width: auto; max-width: calc(100vw - 32px); background: #111; }
 dialog.lightbox form { align-items: center; gap: 10px; padding: 12px; }
 dialog.lightbox img { max-width: calc(100vw - 56px); max-height: calc(100vh - 120px); border-radius: 8px; }
+
+/* ---- ピンと記録フォームの図 ---- */
+.pin { pointer-events: none; --pk: var(--critical); }
+.pin.sev-low { --pk: #c0392b; } .pin.sev-mid { --pk: #c0392b; } .pin.sev-high { --pk: #a91409; }
+.pin.sev-pick { --pk: var(--accent); }
+.pin .pin-body { fill: var(--pk); stroke: #fff; stroke-width: 2; }
+.pin .pin-dot { fill: #fff; }
+.pin .pin-label { fill: var(--pk); font-weight: 800; text-anchor: middle; }
+.pin .pin-pulse { fill: var(--pk); opacity: 0.35; transform-box: fill-box; transform-origin: center; animation: pinPulse 1.8s ease-out infinite; }
+.pin.sev-pick .pin-pulse { animation: none; opacity: 0.25; }
+.pin.selected .pin-body { stroke: var(--accent); stroke-width: 3; }
+@keyframes pinPulse { 0% { transform: scale(0.6); opacity: 0.5; } 100% { transform: scale(2.4); opacity: 0; } }
+.issue-num { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--critical); color: #fff; font-size: 11.5px; font-weight: 800; margin-right: 6px; vertical-align: middle; }
+.variants { flex-wrap: wrap; }
+.variants .seg-btn { border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; }
+.variants .seg-btn.on { border-color: var(--accent); }
+.pick-tabs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+.pick-tabs .seg-btn { border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; }
+.pick-wrap { border: 1px solid var(--border); border-radius: 10px; padding: 6px; background: var(--surface-2); max-height: 360px; overflow: hidden; display: flex; justify-content: center; }
+.pick-wrap svg { max-height: 348px; width: auto; max-width: 100%; }
+.pick-svg { cursor: crosshair; }
+.pick-svg .part .shape { fill: rgba(31, 78, 121, 0.06); stroke: none; }
+.pick-svg .part.target .shape { fill: rgba(31, 78, 121, 0.28); stroke: var(--accent); stroke-width: 3; }
+.pick-svg .part:hover .shape { fill: rgba(31, 78, 121, 0.06); stroke: none; }
+.pick-svg .part.target:hover .shape { fill: rgba(31, 78, 121, 0.32); stroke: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .pin .pin-pulse { animation: none; opacity: 0.3; } }

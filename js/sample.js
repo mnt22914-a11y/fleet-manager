@@ -140,10 +140,13 @@ export function buildSample(today = todayISO()) {
     createdAt: nowISO(), updatedAt: nowISO(),
   });
   addIssue(0, 'side_l', 'mid', '左スライドドアが閉まりにくい', 'レールにゴミが噛んでいる可能性。閉めるときに 2 回押す必要あり', 3);
+  issues[issues.length - 1].pin = { view: 'left', x: 0.62, y: 0.78 };
   addIssue(0, 'wheel_rr', 'low', '右後タイヤの空気が抜けやすい', '週 1 回 20kPa ほど下がる。バルブか釘の可能性', 9);
   addIssue(0, 'lamp_rl', 'low', '左テールランプのナンバー灯が切れている', '', 1);
   addIssue(5, 'lamp_fr', 'mid', '右ヘッドライトの内側が曇っている', '雨の後に水滴が溜まる。パッキン不良の疑い', 4);
+  issues[issues.length - 1].pin = { view: 'front', x: 0.19, y: 0.48 };
   addIssue(11, 'front_bumper', 'high', 'フロントバンパー破損(接触事故)', '10/14 荷下ろし時にポールへ接触。左角が割れて垂れ下がっている', 4);
+  issues[issues.length - 1].pin = { view: 'front', x: 0.86, y: 0.80 };
   addIssue(11, 'hood', 'mid', 'アイドリングが不安定', '信号待ちで回転数が上下する', 12);
   addIssue(5, 'windshield', 'high', 'フロントガラスにヒビ(運転席側 15cm)', '飛び石。視界にかかるため早急に交換', 2);
   addIssue(8, 'cargo', 'mid', '荷室の床板がめくれている', '台車が引っかかる', 6);
