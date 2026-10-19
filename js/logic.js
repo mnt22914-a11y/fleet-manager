@@ -323,25 +323,25 @@ export function nowISO() {
 
 /** 上から見た車の図の部位。spot があるものは図の上に描き、ないものは図の下のチップで表す。 */
 export const PARTS = [
-  // 軽バン(キャブオーバー)の上面図。鼻が短く、運転席の真下あたりに前輪、側面はスライドドア。
-  { id: 'front_bumper', label: 'フロントバンパー', short: '前バンパー', spot: { x: 70, y: 14, w: 160, h: 22, rx: 11 } },
-  { id: 'hood', label: 'フロント周り(エンジン・ラジエーター・ボンネット)', short: 'エンジン', spot: { x: 74, y: 36, w: 152, h: 34, rx: 6 } },
-  { id: 'windshield', label: 'フロントガラス・ワイパー', short: 'ガラス', spot: { x: 78, y: 70, w: 144, h: 44, rx: 8 } },
-  { id: 'cabin', label: '運転席・助手席(エアコン・計器)', short: '運転席', spot: { x: 70, y: 114, w: 160, h: 96, rx: 6 } },
-  { id: 'cargo', label: '荷室', short: '荷室', spot: { x: 70, y: 210, w: 160, h: 192, rx: 6 } },
-  { id: 'rear', label: 'バックドア・テールランプ・後バンパー', short: '後部', spot: { x: 70, y: 402, w: 160, h: 40, rx: 11 } },
-  { id: 'side_l', label: '左スライドドア・左側面', short: '左側面', spot: { x: 58, y: 150, w: 12, h: 200, rx: 4 } },
-  { id: 'side_r', label: '右スライドドア・右側面', short: '右側面', spot: { x: 230, y: 150, w: 12, h: 200, rx: 4 } },
-  { id: 'mirror_l', label: '左ミラー', short: '左ミラー', spot: { x: 44, y: 100, w: 16, h: 14, rx: 4 } },
-  { id: 'mirror_r', label: '右ミラー', short: '右ミラー', spot: { x: 240, y: 100, w: 16, h: 14, rx: 4 } },
-  { id: 'wheel_fl', label: '左前タイヤ・ブレーキ', short: '左前', spot: { x: 30, y: 88, w: 26, h: 50, rx: 9 } },
-  { id: 'wheel_fr', label: '右前タイヤ・ブレーキ', short: '右前', spot: { x: 244, y: 88, w: 26, h: 50, rx: 9 } },
-  { id: 'wheel_rl', label: '左後タイヤ・ブレーキ', short: '左後', spot: { x: 30, y: 326, w: 26, h: 50, rx: 9 } },
-  { id: 'wheel_rr', label: '右後タイヤ・ブレーキ', short: '右後', spot: { x: 244, y: 326, w: 26, h: 50, rx: 9 } },
-  { id: 'battery', label: 'バッテリー・電装', short: '電装', spot: null },
-  { id: 'underbody', label: '下回り・マフラー・足回り', short: '下回り', spot: null },
-  { id: 'lights', label: 'ランプ類', short: 'ランプ', spot: null },
-  { id: 'other', label: 'その他', short: 'その他', spot: null },
+  // onBody: 図(側面・正面・背面・上面)に描ける部位。描けないものはチップで表す
+  { id: 'front_bumper', label: 'フロントバンパー', short: '前バンパー', onBody: true },
+  { id: 'hood', label: 'フロント周り(エンジン・ラジエーター・ボンネット・フェンダー)', short: 'フロント', onBody: true },
+  { id: 'windshield', label: 'フロントガラス・ワイパー', short: 'ガラス', onBody: true },
+  { id: 'cabin', label: '運転席・助手席(前ドア・エアコン・計器)', short: '運転席', onBody: true },
+  { id: 'cargo', label: '荷室(リアクォーター・ルーフ)', short: '荷室', onBody: true },
+  { id: 'rear', label: 'バックドア・テールゲート・後バンパー', short: '後部', onBody: true },
+  { id: 'side_l', label: '左スライドドア', short: '左スライド', onBody: true },
+  { id: 'side_r', label: '右スライドドア', short: '右スライド', onBody: true },
+  { id: 'mirror_l', label: '左ミラー', short: '左ミラー', onBody: true },
+  { id: 'mirror_r', label: '右ミラー', short: '右ミラー', onBody: true },
+  { id: 'wheel_fl', label: '左前タイヤ・ブレーキ', short: '左前', onBody: true },
+  { id: 'wheel_fr', label: '右前タイヤ・ブレーキ', short: '右前', onBody: true },
+  { id: 'wheel_rl', label: '左後タイヤ・ブレーキ', short: '左後', onBody: true },
+  { id: 'wheel_rr', label: '右後タイヤ・ブレーキ', short: '右後', onBody: true },
+  { id: 'lights', label: 'ランプ類(ヘッドライト・テールランプ・ウインカー)', short: 'ランプ', onBody: true },
+  { id: 'underbody', label: '下回り・マフラー・足回り', short: '下回り', onBody: true },
+  { id: 'battery', label: 'バッテリー・電装', short: '電装', onBody: false },
+  { id: 'other', label: 'その他', short: 'その他', onBody: false },
 ];
 
 export const PART_BY_ID = Object.fromEntries(PARTS.map((p) => [p.id, p]));

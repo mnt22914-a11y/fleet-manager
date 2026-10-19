@@ -4,7 +4,7 @@ import * as store from './store.js';
 import * as L from './logic.js';
 import { buildSample } from './sample.js';
 import * as photos from './photos.js';
-import { mountVan3D } from './van3d.js';
+import { renderViews } from './views2d.js';
 
 const $app = document.getElementById('app');
 const $dialogRoot = document.getElementById('dialog-root');
@@ -14,7 +14,7 @@ const $toast = document.getElementById('toast');
 const ui = {
   vehicles: { q: '', base: '', status: '', onlyAlert: false, sortKey: 'code', sortDir: 'asc', view: 'lot' },
   maintenance: { q: '', ym: '', vehicleId: '', type: '' },
-  detail: { part: '', view: '3d' },
+  detail: { part: '' },
 };
 
 // ---- ユーティリティ ----
@@ -80,10 +80,7 @@ function parseRoute() {
   return { name: 'home' };
 }
 
-let van3d = null;
-
 function render() {
-  if (van3d) { van3d.destroy(); van3d = null; }
   const route = parseRoute();
   const state = store.getState();
   const today = L.todayISO();
@@ -108,16 +105,6 @@ function render() {
   }
   $app.innerHTML = html;
   $app.scrollTop = 0;
-  const holder = $app.querySelector('#van3d');
-  if (holder && route.name === 'vehicle') {
-    const issues = store.issuesOf(route.id);
-    van3d = mountVan3D(holder, {
-      status: L.partStatus(issues),
-      selected: ui.detail.part,
-      onSelect: (part) => { ui.detail.part = ui.detail.part === part ? '' : part; render(); },
-    });
-    if (!van3d) { ui.detail.view = '2d'; render(); }
-  }
 }
 
 // ---- ダッシュボード ----
@@ -394,17 +381,13 @@ function renderVehicleDetail(state, id, today) {
       </div>
       <div class="card">
         <div class="card-head"><h2>車体の状態</h2><span class="muted">${L.openIssues(issues).length ? `未対応の異常 ${L.openIssues(issues).length} 件` : '未対応の異常はありません'}</span></div>
-        <div class="card-body body-wrap">
-          <div class="diagram-col">
-            <div class="diagram-tools">
-              <div class="seg view-seg">
-                <button type="button" class="seg-btn ${ui.detail.view === '3d' ? 'on' : ''}" data-action="set-detail-view" data-view="3d">3D</button>
-                <button type="button" class="seg-btn ${ui.detail.view === '2d' ? 'on' : ''}" data-action="set-detail-view" data-view="2d">図</button>
-              </div>
-              <span class="muted" style="font-size:11.5px">${ui.detail.view === '3d' ? 'ドラッグで回転 ・ ピンチ/ホイールで拡大 ・ 部位をタップで選択' : '部位をクリックすると、その部位の異常だけを表示します'}</span>
-            </div>
-            ${ui.detail.view === '3d' && globalThis.THREE ? `<div id="van3d" class="van3d"></div>${renderPartChips(L.partStatus(issues), ui.detail.part)}` : renderDiagram(issues, ui.detail.part)}
+        <div class="card-body body-stack">
+          <div class="views-head">
+            <span class="muted" style="font-size:12px">部位をクリックすると、その部位の異常だけを表示します。赤 = 未対応の異常あり、青枠 = 選択中</span>
+            ${ui.detail.part ? '<button class="btn ghost small" data-action="select-part" data-part="">選択を解除</button>' : ''}
           </div>
+          ${renderViews(issues, ui.detail.part)}
+          ${renderPartChips(L.partStatus(issues), ui.detail.part)}
           ${renderIssuePanel(v, issues, ui.detail.part, today)}
         </div>
       </div>
@@ -476,34 +459,12 @@ function recordRow(r, vehicle) {
 
 // ---- 車体の図と異常 ----
 
-function renderDiagram(issues, selected) {
-  const status = L.partStatus(issues);
-  const onBody = L.PARTS.filter((p) => p.spot);
-  const shapes = onBody.map((p) => {
-    const st = status[p.id];
-    const cls = ['part', p.id.startsWith('wheel') ? 'wheel' : '', st ? `has-issue sev-${st.severity}` : '', selected === p.id ? 'selected' : ''].filter(Boolean).join(' ');
-    const { x, y, w, h, rx } = p.spot;
-    const cx = x + w / 2, cy = y + h / 2;
-    const label = w >= 100 ? `<text class="plabel" x="${cx}" y="${st ? cy + 24 : cy + 4}">${esc(p.short)}</text>` : '';
-    const marker = st ? `<g class="marker" transform="translate(${cx} ${cy})"><circle class="ring" r="9"/><circle class="ring ring-2" r="9"/><circle class="dot" r="9"/><text y="3.5">${st.count}</text></g>` : '';
-    return `<g class="${cls}" data-action="select-part" data-part="${p.id}"><title>${esc(p.label)}</title><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"/>${label}${marker}</g>`;
-  });
-  return `<div class="diagram">
-    <svg viewBox="20 0 260 460" role="img" aria-label="車両の上面図">
-      <path class="body-shadow" d="M 104 8 H 196 Q 236 8 236 48 V 420 Q 236 448 208 448 H 92 Q 64 448 64 420 V 48 Q 64 8 104 8 Z"/>
-      <text class="dir" x="150" y="4">▲ 前</text>
-      ${shapes.join('')}
-    </svg>
-    ${renderPartChips(status, selected)}
-  </div>`;
-}
-
 function renderPartChips(status, selected) {
-  const chips = L.PARTS.filter((p) => !p.spot).map((p) => {
+  const chips = L.PARTS.filter((p) => !p.onBody).map((p) => {
     const st = status[p.id];
     return `<button type="button" class="part-chip ${st ? `sev-${st.severity}` : ''} ${selected === p.id ? 'selected' : ''}" data-action="select-part" data-part="${p.id}">${esc(p.short)}${st ? ` <b>${st.count}</b>` : ''}</button>`;
   });
-  return `<div class="part-chips">${chips.join('')}</div><p class="muted" style="font-size:11px;text-align:center;margin-top:6px">車体に描けない部位。赤は未対応の異常あり</p>`;
+  return `<div class="part-chips">${chips.join('')}</div>`;
 }
 
 function issueItem(i, { showVehicle = false, showPart = true } = {}) {
@@ -1071,7 +1032,6 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'set-view': ui.vehicles.view = el.dataset.view; render(); break;
-    case 'set-detail-view': ui.detail.view = el.dataset.view; render(); break;
     case 'view-photo': openLightbox(el.dataset.photo); break;
     case 'export-vehicles-csv': exportVehiclesCSV(); break;
     case 'export-records-csv': exportRecordsCSV(); break;

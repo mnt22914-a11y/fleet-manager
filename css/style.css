@@ -308,6 +308,8 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
   .alert-item { grid-template-columns: 4px 1fr auto; gap: 10px; padding: 10px 12px; }
   .deadline-tiles { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
+  .views { grid-template-columns: 1fr 1fr; }
+  .view-top { grid-column: auto; grid-row: auto; }
   .toolbar input[type="search"] { width: 100%; }
   .kpi .value { font-size: 22px; }
   .bars { grid-template-columns: repeat(6, 1fr); }
@@ -315,6 +317,7 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
 }
 @media (max-width: 480px) {
   .grid-4 { grid-template-columns: 1fr 1fr; }
+  .views { grid-template-columns: 1fr; }
 }
 @media print {
   #sidebar, #tabbar, .toolbar, .btn, .actions { display: none !important; }
@@ -322,38 +325,59 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
   .card { box-shadow: none; }
 }
 
-/* ---- 車体の図と異常 ---- */
-.body-wrap { display: grid; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); gap: 24px; align-items: start; }
-.diagram { animation: fadeUp 0.45s ease-out; }
-.diagram svg { width: 100%; max-width: 280px; height: auto; display: block; margin: 0 auto; overflow: visible; }
-.diagram .body-shadow { fill: var(--surface-2); stroke: var(--border); stroke-width: 1.5; }
-.diagram .dir { font-size: 10px; fill: var(--muted); text-anchor: middle; }
+/* ---- 車体の 5 面図と異常 ---- */
+.body-stack { display: flex; flex-direction: column; gap: 14px; }
+.views-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.views { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto auto; gap: 12px; }
+.view { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 8px 10px 6px; display: flex; flex-direction: column; min-width: 0; }
+.view.has-issue { border-color: var(--critical); box-shadow: inset 0 0 0 1px var(--critical-soft); }
+.view-top { grid-column: 3; grid-row: 1 / span 2; }
+.view-title { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; font-weight: 700; color: var(--text-2); margin-bottom: 4px; }
+.view-count { font-size: 11px; font-weight: 600; color: var(--muted); }
+.view.has-issue .view-count { color: var(--critical); }
+.view-svg { width: 100%; height: auto; display: block; flex: 1; }
+.view-svg .body-bg { fill: var(--surface-2); stroke: var(--text-2); stroke-width: 1.2; stroke-linejoin: round; }
 .part { cursor: pointer; }
-.part rect { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; transition: fill 0.2s, stroke 0.2s, transform 0.2s; }
-.part.wheel rect { fill: var(--text-2); stroke: var(--text-2); }
-.part:hover rect { fill: var(--accent-soft); stroke: var(--accent); }
-.part.selected rect { stroke: var(--accent); stroke-width: 3; }
-.part.sev-high rect { fill: var(--critical-soft); stroke: var(--critical); }
-.part.sev-mid rect { fill: var(--critical-soft); stroke: var(--critical); }
-.part.sev-low rect { fill: var(--critical-soft); stroke: var(--critical); opacity: 0.85; }
-.part.has-issue:hover rect { filter: brightness(0.96); }
-.part .plabel { font-size: 11px; fill: var(--text-2); text-anchor: middle; pointer-events: none; }
+.part .shape { fill: var(--surface); stroke: var(--text-2); stroke-width: 0.9; stroke-linejoin: round; transition: fill 0.15s, stroke 0.15s; }
+.part .shape.glass, .glass.deco { fill: #c6d7e4; stroke: #4a5c6c; stroke-width: 0.8; }
+.part .shape.tire { fill: #262a2f; stroke: #111; }
+.part .shape.trim { fill: #30353b; stroke: #111; }
+.part .shape.lamp { fill: #f1f4f7; stroke: #4a5c6c; }
+.part .shape.tail { fill: #d9534a; stroke: #7a1f1f; }
+.part:hover .shape { fill: var(--accent-soft); stroke: var(--accent); }
+.part.has-issue .shape { fill: #f2b3ab; stroke: var(--critical); stroke-width: 1.2; }
+.part.has-issue .shape.tire, .part.has-issue .shape.trim { fill: #c0392b; stroke: #7a1f1f; }
+.part.has-issue:hover .shape { fill: #ec9a90; }
+.part.selected .shape { stroke: var(--accent); stroke-width: 2.6; }
+.part .plabel { font-size: 8px; fill: var(--text-2); text-anchor: middle; pointer-events: none; font-weight: 600; }
+.part.has-issue .plabel { fill: #6b1510; }
+.view-svg .arch { fill: var(--surface-2); stroke: var(--text-2); stroke-width: 0.9; }
+.view-svg .deco { pointer-events: none; }
+.view-svg .trim.deco { fill: #30353b; stroke: none; }
+.view-svg .lamp.deco { fill: #f1f4f7; stroke: #4a5c6c; stroke-width: 0.6; }
+.view-svg .tail.deco { fill: #d9534a; stroke: none; }
+.view-svg .plate.deco { fill: #f7f7f2; stroke: #6b7480; stroke-width: 0.6; }
+.view-svg .recess.deco { fill: #e4e8ec; stroke: #9aa3ad; stroke-width: 0.6; }
+.view-svg .rim { fill: #b9c0c7; stroke: #6b7480; stroke-width: 0.6; pointer-events: none; }
+.view-svg .seam { stroke: #4a5560; stroke-width: 0.8; fill: none; pointer-events: none; }
+.view-svg .crease { stroke: #9aa3ad; stroke-width: 0.8; fill: none; pointer-events: none; }
+.view-svg .bead { stroke: #cfd6dd; stroke-width: 0.8; fill: none; pointer-events: none; }
+.view-svg .bar { stroke: #e4e8ec; stroke-width: 1.2; fill: none; pointer-events: none; }
+.view-svg .moulding { stroke: #7d8794; stroke-width: 1.4; fill: none; pointer-events: none; }
+.view-svg .dirlabel { font-size: 8px; fill: var(--muted); pointer-events: none; }
 .marker { pointer-events: none; --mk: var(--critical); }
-.sev-mid .marker { --mk: var(--critical); }
-.sev-low .marker { --mk: var(--critical); }
 .marker .dot { fill: var(--mk); }
-.marker text { fill: #fff; font-size: 11px; font-weight: 700; text-anchor: middle; }
-.marker .ring { fill: none; stroke: var(--mk); stroke-width: 2; transform-box: fill-box; transform-origin: center; animation: ring 2s ease-out infinite; }
+.marker text { fill: #fff; font-size: 10px; font-weight: 700; text-anchor: middle; }
+.marker .ring { fill: none; stroke: var(--mk); stroke-width: 1.6; transform-box: fill-box; transform-origin: center; animation: ring 2s ease-out infinite; }
 .marker .ring-2 { animation-delay: 1s; }
-@keyframes ring { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(3.2); opacity: 0; } }
+@keyframes ring { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(3); opacity: 0; } }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.part-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 12px; }
+.part-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.part-chips::before { content: "図に描けない部位:"; font-size: 11.5px; color: var(--muted); margin-right: 4px; }
 .part-chip { border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: 999px; padding: 4px 11px; font-size: 12px; cursor: pointer; transition: background 0.2s; }
 .part-chip:hover { background: var(--accent-soft); border-color: var(--accent); }
 .part-chip b { margin-left: 2px; }
-.part-chip.sev-high { background: var(--critical-soft); border-color: var(--critical); color: var(--critical); }
-.part-chip.sev-mid { background: var(--critical-soft); border-color: var(--critical); color: var(--critical); }
-.part-chip.sev-low { background: var(--critical-soft); border-color: var(--critical); color: var(--critical); }
+.part-chip.sev-high, .part-chip.sev-mid, .part-chip.sev-low { background: var(--critical-soft); border-color: var(--critical); color: var(--critical); }
 .part-chip.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .badge.sev-high { background: var(--critical-soft); color: var(--critical); }
@@ -383,11 +407,10 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
 
 @media (prefers-reduced-motion: reduce) {
   .marker .ring { animation: none; opacity: 0.5; }
-  .diagram, .issue-panel { animation: none; }
+  .issue-panel { animation: none; }
 }
 @media (max-width: 860px) {
-  .body-wrap { grid-template-columns: 1fr; }
-}
+  }
 
 /* ---- 駐車場ビュー ---- */
 .view-seg { gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -483,12 +506,7 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
   .slot-van { width: 56px; height: 104px; }
 }
 
-/* ---- 3D と写真 ---- */
-.diagram-col { min-width: 0; }
-.diagram-tools { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
-.van3d { position: relative; width: 100%; height: 380px; border-radius: 12px; overflow: hidden;
-  background: radial-gradient(ellipse at 50% 70%, var(--surface-2), var(--surface) 75%); border: 1px solid var(--border); }
-.van3d canvas { width: 100% !important; height: 100% !important; }
+/* ---- 写真 ---- */
 .photo-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .photo-thumb { position: relative; width: 84px; height: 84px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--surface-2); }
 .photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -504,4 +522,3 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
 dialog.lightbox { width: auto; max-width: calc(100vw - 32px); background: #111; }
 dialog.lightbox form { align-items: center; gap: 10px; padding: 12px; }
 dialog.lightbox img { max-width: calc(100vw - 56px); max-height: calc(100vh - 120px); border-radius: 8px; }
-@media (max-width: 860px) { .van3d { height: 300px; } }
