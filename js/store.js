@@ -83,6 +83,19 @@ export function upsertVehicle(input) {
   return input.id || state.vehicles[state.vehicles.length - 1].id;
 }
 
+/** CSV 取り込みなどで複数台をまとめて登録・更新する(保存は 1 回)。 */
+export function upsertVehicles(list) {
+  const now = nowISO();
+  let added = 0, updated = 0;
+  for (const input of list) {
+    const i = input.id ? state.vehicles.findIndex((v) => v.id === input.id) : -1;
+    if (i >= 0) { state.vehicles[i] = { ...state.vehicles[i], ...input, updatedAt: now }; updated++; }
+    else { state.vehicles.push({ ...input, id: input.id || uid(), createdAt: now, updatedAt: now }); added++; }
+  }
+  persist();
+  return { added, updated };
+}
+
 export function removeVehicle(id) {
   state.vehicles = state.vehicles.filter((v) => v.id !== id);
   for (const v of state.vehicles) if (v.loaner?.type === 'own' && v.loaner.vehicleId === id) v.loaner = null;

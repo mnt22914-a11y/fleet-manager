@@ -539,6 +539,7 @@ dialog.lightbox img { max-width: calc(100vw - 56px); max-height: calc(100vh - 12
 .banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-radius: var(--radius); border: 1px solid var(--border); flex-wrap: wrap; }
 .banner.repair { background: var(--warning-soft); border-color: var(--warning); }
 .banner.lent { background: var(--accent-soft); border-color: var(--accent); }
+.banner.backup { background: var(--warning-soft); border-color: var(--warning); }
 .banner strong { font-size: 14px; }
 .slot-loaner { margin-top: 6px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #f0b429; color: #3a2a00; display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .slot-loaner.lent { background: #4f8fd1; color: #fff; }

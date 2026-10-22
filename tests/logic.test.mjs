@@ -180,3 +180,55 @@ test('validateIssue: 事故記録の日時', () => {
   assert.deepEqual(L.validateIssue({ ...base, accident: { datetime: '' } }), []);
   assert.ok(L.validateIssue({ ...base, accident: { datetime: '18/10/2026' } }).some((e) => e.includes('日時')));
 });
+
+test('parseCSV: 引用符・改行入りセル・BOM・CRLF を読める', () => {
+  const rows = L.parseCSV('﻿a,b\r\n1,"x, ""y""\nz"\r\n\r\n2,\r\n');
+  assert.deepEqual(rows, [['a', 'b'], ['1', 'x, "y"\nz'], ['2', '']]);
+});
+
+test('normalizeDateInput: Excel 風の日付を YYYY-MM-DD にする', () => {
+  assert.equal(L.normalizeDateInput('2026/4/1'), '2026-04-01');
+  assert.equal(L.normalizeDateInput('2026年4月1日'), '2026-04-01');
+  assert.equal(L.normalizeDateInput('20260401'), '2026-04-01');
+  assert.equal(L.normalizeDateInput('R8.4.1'), '2026-04-01');
+  assert.equal(L.normalizeDateInput('2026-04-01'), '2026-04-01');
+  assert.equal(L.normalizeDateInput(''), '');
+});
+
+test('vehiclesFromCSV: 見出しで列を対応づけ、同じナンバーは既存 id を引き継ぐ', () => {
+  const csv = 'ドライバー名,ナンバー,ステータス,車検満了日,走行距離(km)\n佐藤,品川 480 あ 12-34,稼働中,2027/3/31,"12,345"\n鈴木,品川 480 い 56-78,,2027-01-10,\n';
+  const existing = [{ id: 'v1', plate: '品川 480 あ 12-34' }];
+  const { vehicles, errors } = L.vehiclesFromCSV(csv, existing, { ...L.DEFAULT_SETTINGS, bases: ['A'] });
+  assert.deepEqual(errors, []);
+  assert.equal(vehicles.length, 2);
+  assert.equal(vehicles[0].id, 'v1');
+  assert.equal(vehicles[0].inspectionExpiry, '2027-03-31');
+  assert.equal(vehicles[0].odometer, 12345);
+  assert.equal(vehicles[1].id, undefined);
+  assert.equal(vehicles[1].status, 'active');
+  assert.equal(vehicles[1].base, 'A');
+});
+
+test('vehiclesFromCSV: 上書きの行は空欄・列なしの項目を持たない(既存の値が残る)', () => {
+  const csv = 'ドライバー名,ナンバー,車検満了日,走行距離(km)\n佐藤 新,品川 1,,\n';
+  const existing = [{ id: 'v1', driverName: '佐藤', plate: '品川 1', status: 'repair', odometer: 100, inspectionExpiry: '2027-01-01' }];
+  const { vehicles, errors } = L.vehiclesFromCSV(csv, existing);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(vehicles[0], { id: 'v1', driverName: '佐藤 新', plate: '品川 1' });
+});
+
+test('vehiclesFromCSV: 必須列がない・値が不正なら行番号付きのエラー', () => {
+  assert.match(L.vehiclesFromCSV('名前,番号\nA,B\n').errors[0], /ドライバー名/);
+  const { errors } = L.vehiclesFromCSV('ドライバー名,ナンバー,ステータス\n,品川 1,稼働中\n佐藤,品川 2,運用中\n佐藤,品川 2,稼働中\n');
+  assert.ok(errors.some((e) => e.startsWith('2 行目') && /ドライバー名/.test(e)));
+  assert.ok(errors.some((e) => e.startsWith('3 行目') && /ステータス/.test(e)));
+  assert.ok(errors.some((e) => e.startsWith('4 行目') && /重複/.test(e)));
+});
+
+test('backupDue: 未実施か 7 日以上前なら促す。車両がなければ促さない', () => {
+  assert.equal(L.backupDue(null, 5, T), true);
+  assert.equal(L.backupDue('2026-10-11T00:00:00Z', 5, T), true);
+  assert.equal(L.backupDue('2026-10-12T00:00:00Z', 5, T), false);
+  assert.equal(L.backupDue(null, 0, T), false);
+  assert.equal(L.daysSinceBackup('2026-10-15', T), 3);
+});

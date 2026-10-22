@@ -13,11 +13,13 @@
 - **整備記録**: いつ・何を・どこで・いくらで・何 km のときに。次回の目安(日付 or 距離)を入れるとアラートに出る。「車検」の記録からは車検満了日を台帳に反映できる
 - **代車**: 修理中の車両に代車を登録(自社代車 = 管理車両から選ぶ / 借代車 = ナンバーだけ)。詳細と駐車場に「代車使用中」を表示し、貸した側にも「○○の代車として貸出中」を表示。「代車を返却して稼働に戻す」で元に戻る
 - **事故記録**: 異常の登録で「事故記録として残す」にチェックすると、事故の状況(日時・場所・形態・管轄警察署)、自分の情報(運転手・ナンバー・損傷)、相手の情報(氏名・電話・ナンバー・損傷)と写真を記録。傷の場所は図に複数ピン。修理済み/未修理を管理し、車両詳細の「事故記録」カードに保険用の一覧として残る
-- **設定**: アラート基準(日数・距離)、チーム、整備種別、JSON バックアップ/復元、サンプルデータ、全削除
+- **車両の CSV 一括登録**: テンプレート CSV を Excel で埋めて読み込む。登録前に一覧と行ごとの問題点を表示。同じナンバーは上書き(空欄の項目は残す)。Excel 風の日付(2027/3/31、R9.3.31)も読める
+- **バックアップの催促**: 7 日以上書き出していないとダッシュボードに黄色のバナーが出る。設定に最終バックアップ日を表示
+- **設定**: アラート基準(日数・距離)、チーム、整備種別、JSON バックアップ/復元、CSV 書き出し/一括登録、サンプルデータ、全削除
 
 ## 使い方
 
-ローカルで開く(ES modules を使うので `file://` ではなく HTTP サーバーで):
+`起動.command` をダブルクリックすると、簡易サーバーを起動して Chrome で開きます。手で開くなら(ES modules を使うので `file://` ではなく HTTP サーバーで):
 
 ```sh
 cd fleet-manager
@@ -25,7 +27,7 @@ python3 -m http.server 8080
 # → http://localhost:8080
 ```
 
-最初は空なので、設定 →「サンプルデータを入れる」で 24 台分のデータを入れると全画面を試せます。
+最初は空なので、設定 →「サンプルデータを入れる」で 24 台分のデータを入れると全画面を試せます。実運用の手順(初期設定、CSV での一括登録、日々の入力、週 1 回のバックアップ)は docs/運用手順.md にあります。
 
 ## 構成
 
@@ -42,6 +44,8 @@ js/photos.js          写真の縮小と IndexedDB 保存。起動時に読み�
 js/app.js             画面の描画とイベント(ハッシュルーティング、<dialog> フォーム)
 sw.js                 オフライン用の最小キャッシュ
 tests/logic.test.mjs  node --test
+起動.command          ダブルクリックでサーバー起動 + ブラウザで開く
+docs/運用手順.md      個人運用の手順
 ```
 
 ## テスト
@@ -66,7 +70,7 @@ issue   = { id, vehicleId, part, severity: 'high'|'mid'|'low', title, detail, ph
                                otherName, otherPhone, otherPlate, otherDamage },
             createdAt, updatedAt }
 // record にも photos: [photoId]。写真本体は IndexedDB(fleet-photos)に Blob で保存
-settings = { alertDays, warnDays, odometerWarnKm, bases: [], types: [], companyName }
+settings = { alertDays, warnDays, odometerWarnKm, bases: [], types: [], companyName, lastBackupAt }
 ```
 
 ## 今後

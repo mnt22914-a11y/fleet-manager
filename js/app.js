@@ -109,6 +109,20 @@ function render() {
 
 // ---- ダッシュボード ----
 
+function lastBackupText(settings, today) {
+  const d = L.daysSinceBackup(settings.lastBackupAt, today);
+  if (d == null) return 'まだ一度も書き出していません';
+  return `最終バックアップ: ${L.fmtDate(String(settings.lastBackupAt).slice(0, 10))}(${d === 0 ? '今日' : `${d} 日前`})`;
+}
+
+function backupBanner(settings, vehicleCount, today) {
+  if (!L.backupDue(settings.lastBackupAt, vehicleCount, today)) return '';
+  return `<div class="banner backup" style="margin-bottom:16px">
+    <div><strong>バックアップを書き出してください</strong><div class="muted" style="font-size:12.5px">${esc(lastBackupText(settings, today))}。データはこの PC のブラウザにだけ保存されています。週 1 回を目安に書き出し、ファイルは会社の共有フォルダなどに置いてください。</div></div>
+    <button class="btn primary" data-action="export-json">いまバックアップを書き出す</button>
+  </div>`;
+}
+
 function renderHome(state, alerts, today) {
   const { vehicles, records, settings, issues } = state;
   const openIssues = L.sortIssues(L.openIssues(issues));
@@ -120,8 +134,10 @@ function renderHome(state, alerts, today) {
         <p style="margin:6px 0 18px">車両を 1 台ずつ登録するか、まずサンプルデータで画面を試せます。</p>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
           <button class="btn primary" data-action="add-vehicle">＋ 車両を追加</button>
+          <label class="btn">CSV で一括登録<input type="file" accept=".csv,text/csv" data-action-file="import-vehicles-csv" hidden></label>
           <button class="btn" data-action="load-sample">サンプルデータを入れる</button>
         </div>
+        <p class="muted" style="font-size:12px;margin-top:14px">一括登録は、設定 →「車両 CSV のテンプレート」を Excel で埋めてから読み込みます。</p>
       </div></div>`;
   }
   const counts = L.countByStatus(vehicles);
@@ -142,6 +158,7 @@ function renderHome(state, alerts, today) {
         <button class="btn primary" data-action="add-vehicle">＋ 車両を追加</button>
       </div>
     </div>
+    ${backupBanner(settings, vehicles.length, today)}
     <div class="grid grid-4" style="margin-bottom:16px">
       <div class="card kpi"><div class="label">車両数(廃車を除く)</div><div class="value">${vehicles.length - counts.retired}<small>台</small></div>
         <div class="sub">稼働 ${counts.active} / 修理中 ${counts.repair} / 休車 ${counts.idle}</div></div>
@@ -223,6 +240,7 @@ function renderVehicles(state, today) {
     <div class="page-head">
       <div><h1>車両台帳</h1><p class="sub">全 ${vehicles.length} 台(廃車 ${vehicles.filter((v) => v.status === 'retired').length} 台を含む)</p></div>
       <div class="actions">
+        <label class="btn">CSV 読み込み<input type="file" accept=".csv,text/csv" data-action-file="import-vehicles-csv" hidden></label>
         <button class="btn" data-action="export-vehicles-csv">CSV 書き出し</button>
         <button class="btn primary" data-action="add-vehicle">＋ 車両を追加</button>
       </div>
@@ -631,9 +649,10 @@ function renderSettings(state) {
         <div class="card">
           <div class="card-head"><h2>データ</h2></div>
           <div class="card-body">
-            <div class="settings-row"><div><div>バックアップを書き出す</div><div class="desc">車両・整備記録・設定をまとめた JSON。別の PC に移すときにも使います</div></div><button class="btn" data-action="export-json">書き出す</button></div>
+            <div class="settings-row"><div><div>バックアップを書き出す</div><div class="desc">車両・整備記録・写真・設定をまとめた JSON。別の PC に移すときにも使います<br><strong>${esc(lastBackupText(s, L.todayISO()))}</strong></div></div><button class="btn ${L.backupDue(s.lastBackupAt, state.vehicles.length) ? 'primary' : ''}" data-action="export-json">書き出す</button></div>
             <div class="settings-row"><div><div>バックアップを読み込む</div><div class="desc">今のデータは上書きされます</div></div><label class="btn">読み込む<input type="file" accept="application/json,.json" data-action-file="import-json" hidden></label></div>
             <div class="settings-row"><div><div>CSV で書き出す</div><div class="desc">Excel で開けます</div></div><div style="display:flex;gap:6px"><button class="btn small" data-action="export-vehicles-csv">車両</button><button class="btn small" data-action="export-records-csv">整備記録</button></div></div>
+            <div class="settings-row"><div><div>車両を CSV で一括登録</div><div class="desc">テンプレートを Excel で埋めて読み込みます。ドライバー名とナンバーは必須、ほかは空欄でも可。同じナンバーの車両があれば上書きします</div></div><div style="display:flex;gap:6px"><button class="btn small" data-action="download-vehicle-template">テンプレート</button><label class="btn small">読み込む<input type="file" accept=".csv,text/csv" data-action-file="import-vehicles-csv" hidden></label></div></div>
             <div class="settings-row"><div><div>サンプルデータを入れる</div><div class="desc">試作用の 24 台と整備履歴。今のデータは上書きされます</div></div><button class="btn" data-action="load-sample">入れる</button></div>
             <div class="settings-row"><div><div>すべて削除</div><div class="desc">このブラウザに保存した全データを消します</div></div><button class="btn danger" data-action="clear-all">削除</button></div>
           </div>
@@ -1161,6 +1180,49 @@ function exportRecordsCSV() {
   toast('CSV を書き出しました');
 }
 
+function downloadVehicleTemplate() {
+  const cols = L.VEHICLE_CSV_FIELDS.map(([key, label]) => ({ key, label }));
+  const bases = store.getState().settings.bases;
+  const example = {
+    driverName: '山田 太郎', plate: '品川 480 あ 12-34', qr: 'KV-0001', maker: 'スズキ', modelCode: 'DA17V', firstRegistration: '2023-04',
+    status: '稼働中', base: bases[0] || '', inspectionExpiry: '2027-03-31', jibaisekiExpiry: '2027-04-30', insuranceExpiry: '2027-01-31',
+    insuranceCompany: '○○損保', insurancePhone: '0120-000-000', odometer: 45000, odometerDate: L.todayISO(), note: '例の行です。消して使ってください',
+  };
+  download('車両CSVテンプレート.csv', L.toCSV([example], cols), 'text/csv');
+  toast('テンプレートを書き出しました。Excel で開いて 2 行目から入力してください');
+}
+
+function openCSVImportDialog(text) {
+  const state = store.getState();
+  const { vehicles, errors } = L.vehiclesFromCSV(text, state.vehicles, state.settings);
+  const added = vehicles.filter((v) => !v.id).length;
+  const updated = vehicles.length - added;
+  const ok = errors.length === 0 && vehicles.length > 0;
+  const byId = new Map(state.vehicles.map((v) => [v.id, v]));
+  const preview = vehicles.slice(0, 8).map((v) => (v.id ? { ...byId.get(v.id), ...v } : v));
+  openDialog(`
+    <form novalidate>
+      <div class="dlg-head"><h2>車両 CSV の読み込み</h2><button type="button" class="btn ghost small" data-dlg="cancel">閉じる</button></div>
+      <div class="dlg-body">
+        <div class="form-errors hidden"></div>
+        <p style="margin:0 0 10px"><strong>${vehicles.length} 台</strong>を読み取りました(新規 ${added} 台・ナンバーが同じで上書き ${updated} 台)。</p>
+        ${errors.length ? `<div class="form-errors" style="margin-bottom:10px"><strong>${errors.length} 件の問題があります。CSV を直して読み込み直してください。</strong><ul>${errors.slice(0, 12).map((e) => `<li>${esc(e)}</li>`).join('')}${errors.length > 12 ? `<li>ほか ${errors.length - 12} 件</li>` : ''}</ul></div>` : ''}
+        ${preview.length ? `<div class="table-wrap"><table><thead><tr><th>ドライバー名</th><th>ナンバー</th><th>チーム</th><th>ステータス</th><th>車検満了</th><th></th></tr></thead><tbody>
+          ${preview.map((v) => `<tr><td>${esc(v.driverName)}</td><td>${esc(v.plate)}</td><td>${esc(v.base)}</td><td>${esc(L.STATUS[v.status] || v.status || '')}</td><td>${esc(v.inspectionExpiry || '')}</td><td class="muted">${v.id ? '上書き' : '新規'}</td></tr>`).join('')}
+        </tbody></table></div>${vehicles.length > preview.length ? `<div class="muted" style="font-size:12px;margin-top:6px">ほか ${vehicles.length - preview.length} 台</div>` : ''}` : ''}
+      </div>
+      <div class="dlg-foot">
+        <button type="button" class="btn" data-dlg="cancel">キャンセル</button>
+        <div class="right-group"><button type="submit" class="btn primary" ${ok ? '' : 'disabled'}>${vehicles.length} 台を登録する</button></div>
+      </div>
+    </form>`, () => {
+    if (!ok) return ['CSV の問題を直してから読み込んでください'];
+    const r = store.upsertVehicles(vehicles);
+    toast(`車両を登録しました(新規 ${r.added} 台・上書き ${r.updated} 台)`);
+    location.hash = '#/vehicles';
+  });
+}
+
 // ---- イベント ----
 
 document.addEventListener('click', (e) => {
@@ -1233,6 +1295,7 @@ document.addEventListener('click', (e) => {
     case 'set-view': ui.vehicles.view = el.dataset.view; render(); break;
     case 'view-photo': openLightbox(el.dataset.photo); break;
     case 'export-vehicles-csv': exportVehiclesCSV(); break;
+    case 'download-vehicle-template': downloadVehicleTemplate(); break;
     case 'export-records-csv': exportRecordsCSV(); break;
     case 'export-json':
       toast('書き出しています…');
@@ -1240,6 +1303,7 @@ document.addEventListener('click', (e) => {
         const data = JSON.parse(store.exportJSON());
         data.photos = list;
         download(`車両管理バックアップ_${L.todayISO()}.json`, JSON.stringify(data), 'application/json');
+        store.updateSettings({ lastBackupAt: L.nowISO() });
         toast(`バックアップを書き出しました(写真 ${list.length} 枚を含む)`);
       });
       break;
@@ -1322,6 +1386,12 @@ document.addEventListener('change', (e) => {
     if (key === 'warnDays' && value < store.getState().settings.alertDays) patch.alertDays = value;
     store.updateSettings(patch);
     toast('設定を保存しました');
+  }
+  if (el.dataset.actionFile === 'import-vehicles-csv') {
+    const file = el.files?.[0];
+    if (!file) return;
+    file.text().then((t) => openCSVImportDialog(t));
+    el.value = '';
   }
   if (el.dataset.actionFile === 'import-json') {
     const file = el.files?.[0];

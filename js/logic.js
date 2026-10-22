@@ -312,6 +312,25 @@ export function fmtDays(days) {
   return `あと${days}日`;
 }
 
+// ---- バックアップの目安 ----
+
+export const BACKUP_INTERVAL_DAYS = 7;
+
+/** 最終バックアップからの日数。未実施なら null。 */
+export function daysSinceBackup(lastBackupAt, today = todayISO()) {
+  if (!lastBackupAt) return null;
+  const d = String(lastBackupAt).slice(0, 10);
+  const n = daysUntil(d, today);
+  return n == null ? null : -n;
+}
+
+/** バックアップを促すか。車両がなければ促さない。 */
+export function backupDue(lastBackupAt, vehicleCount, today = todayISO()) {
+  if (!vehicleCount) return false;
+  const d = daysSinceBackup(lastBackupAt, today);
+  return d == null || d >= BACKUP_INTERVAL_DAYS;
+}
+
 // ---- CSV ----
 
 function csvCell(v) {
@@ -324,6 +343,113 @@ export function toCSV(rows, columns) {
   const head = columns.map((c) => csvCell(c.label)).join(',');
   const body = rows.map((r) => columns.map((c) => csvCell(c.get ? c.get(r) : r[c.key])).join(','));
   return '﻿' + [head, ...body].join('\r\n') + '\r\n';
+}
+
+/** CSV 文字列を行ごとの配列にする。引用符・改行入りのセル・BOM・CRLF に対応。空行は飛ばす。 */
+export function parseCSV(text) {
+  const src = String(text || '').replace(/^﻿/, '');
+  const rows = [];
+  let row = [], cell = '', q = false;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (q) {
+      if (c === '"') { if (src[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && src[i + 1] === '\n') i++;
+      row.push(cell); cell = '';
+      if (row.some((x) => x.trim() !== '')) rows.push(row);
+      row = [];
+    } else cell += c;
+  }
+  row.push(cell);
+  if (row.some((x) => x.trim() !== '')) rows.push(row);
+  return rows;
+}
+
+/** 車両 CSV の列。見出しの文字(=書き出した CSV と同じ)で対応づける。 */
+export const VEHICLE_CSV_FIELDS = [
+  ['driverName', 'ドライバー名'], ['plate', 'ナンバー'], ['qr', '車両QR'],
+  ['maker', 'メーカー'], ['modelCode', '型式'], ['firstRegistration', '初度登録'],
+  ['status', 'ステータス'], ['base', 'チーム'],
+  ['inspectionExpiry', '車検満了日'], ['jibaisekiExpiry', '自賠責満了日'],
+  ['insuranceExpiry', '任意保険満了日'], ['insuranceCompany', '任意保険会社'], ['insurancePhone', '保険会社電話'],
+  ['odometer', '走行距離(km)'], ['odometerDate', '走行距離記録日'], ['note', '備考'],
+];
+
+/** Excel で入力しやすい日付表記(2026/4/1、2026.4.1、20260401、R8.4.1)を YYYY-MM-DD にする。読めなければそのまま返す。 */
+export function normalizeDateInput(s) {
+  const t = String(s ?? '').trim();
+  if (!t) return '';
+  let m = t.match(/^(\d{4})[\/.\-年](\d{1,2})[\/.\-月](\d{1,2})日?$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = t.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = t.match(/^[Rr令和]\s*(\d{1,2})[\/.\-年](\d{1,2})[\/.\-月](\d{1,2})日?$/);
+  if (m) return `${2018 + Number(m[1])}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  return t;
+}
+
+/**
+ * 車両 CSV(見出し行あり)を車両オブジェクトの配列に変換する。
+ * 返り値: { vehicles, errors }。errors は行番号付きの文言。
+ * ナンバーが同じ既存車両があれば id を引き継いで上書き扱いにする(その行は「変える項目だけ」を持つ部分オブジェクト)。
+ */
+export function vehiclesFromCSV(text, existing = [], settings = DEFAULT_SETTINGS) {
+  const rows = parseCSV(text);
+  const errors = [];
+  if (rows.length < 2) return { vehicles: [], errors: ['見出し行とデータ行が必要です'] };
+  const head = rows[0].map((h) => h.trim());
+  const idx = {};
+  for (const [key, label] of VEHICLE_CSV_FIELDS) {
+    const i = head.indexOf(label);
+    if (i >= 0) idx[key] = i;
+  }
+  if (idx.driverName == null || idx.plate == null) {
+    return { vehicles: [], errors: ['見出しに「ドライバー名」と「ナンバー」の列が必要です(テンプレート CSV を使ってください)'] };
+  }
+  const statusByLabel = Object.fromEntries(Object.entries(STATUS).map(([k, v]) => [v, k]));
+  const byPlate = new Map(existing.map((v) => [String(v.plate || '').replace(/\s+/g, ''), v]));
+  const vehicles = [];
+  const seen = new Set();
+  rows.slice(1).forEach((r, n) => {
+    const line = n + 2;
+    const get = (k) => (idx[k] == null ? '' : String(r[idx[k]] ?? '').trim());
+    const plateKey = get('plate').replace(/\s+/g, '');
+    const v = {
+      driverName: get('driverName'), plate: get('plate'), qr: get('qr'), maker: get('maker'), modelCode: get('modelCode'),
+      firstRegistration: get('firstRegistration'),
+      status: get('status') === '' ? 'active' : (statusByLabel[get('status')] || (STATUS[get('status')] ? get('status') : '')),
+      base: get('base') || settings.bases[0] || '',
+      inspectionExpiry: normalizeDateInput(get('inspectionExpiry')),
+      jibaisekiExpiry: normalizeDateInput(get('jibaisekiExpiry')),
+      insuranceExpiry: normalizeDateInput(get('insuranceExpiry')),
+      insuranceCompany: get('insuranceCompany'), insurancePhone: get('insurancePhone'),
+      odometer: get('odometer') === '' ? null : Number(get('odometer').replace(/[,km\s]/g, '')),
+      odometerDate: normalizeDateInput(get('odometerDate')),
+      note: get('note'), loaner: null,
+    };
+    if (!v.status) errors.push(`${line} 行目: ステータス「${get('status')}」は 稼働中/修理中/休車/廃車 のどれかにしてください`);
+    const prev = byPlate.get(plateKey);
+    let out = v;
+    if (prev) {
+      // 既存車両の上書き: CSV に列がない・セルが空欄の項目は今の値を残す(消したいときは画面から直す)
+      out = { id: prev.id };
+      for (const k of Object.keys(v)) {
+        if (k === 'loaner') continue;
+        if (idx[k] == null) continue;
+        if (get(k) === '') continue;
+        out[k] = v[k];
+      }
+    }
+    if (plateKey && seen.has(plateKey)) errors.push(`${line} 行目: ナンバー「${v.plate}」が CSV の中で重複しています`);
+    seen.add(plateKey);
+    for (const e of validateVehicle({ ...(prev || {}), ...out, status: out.status || prev?.status || 'active' })) errors.push(`${line} 行目: ${e}`);
+    vehicles.push(out);
+  });
+  return { vehicles, errors };
 }
 
 // ---- その他 ----
