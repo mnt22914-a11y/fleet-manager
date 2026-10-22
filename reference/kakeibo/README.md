@@ -8,4 +8,4 @@
 - schema.sql: RLS(行レベルセキュリティ)付きのテーブル定義の例
 - cdp.mjs: ヘッドレス Chrome に接続して画面を確認する道具(scratchpad で使っていたものと同じ)
 
-全体の ZIP は ~/Projects/_backup/family-kakeibo_2026-10-22.zip。
+全体のバックアップは本人の指示で残していない。
