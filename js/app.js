@@ -1688,7 +1688,14 @@ document.addEventListener('submit', async (e) => {
       await store.auth().signIn(v('email'), String(fd.get('password')));
       await enterApp();
     } else if (form.id === 'signup-form') {
-      const r = await store.auth().signUp(v('email'), String(fd.get('password')), v('code'));
+      let r;
+      try {
+        r = await store.auth().signUp(v('email'), String(fd.get('password')), v('code'));
+      } catch (err) {
+        // アカウントは出来たがコードが違った → ログイン済みなので「招待コードを入力」へ
+        if (store.auth().userId()) { renderJoin(err.message); return; }
+        throw err;
+      }
       if (r === 'confirm-email') { renderLogin('確認メールを送りました。メールのリンクを開いてから、ここでログインして招待コードを入れてください'); return; }
       await enterApp();
     } else {

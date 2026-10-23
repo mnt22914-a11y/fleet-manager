@@ -12,6 +12,7 @@ export async function createSupabaseBackend(url, anonKey) {
   const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
   const sb = createClient(url, anonKey);
   let user = null;
+  let channel = null; // Realtime の購読(ログアウト → 再ログインで二重にならないよう 1 本だけ持つ)
 
   const check = ({ data, error }) => {
     if (error) throw jaAuthError(error);
@@ -124,7 +125,8 @@ export async function createSupabaseBackend(url, anonKey) {
 
     // 誰かがデータを変えたら呼ばれる。callback({ table, type: 'INSERT'|'UPDATE'|'DELETE', id, data })
     onChange(callback) {
-      const channel = sb.channel('fleet-changes');
+      if (channel) { sb.removeChannel(channel); channel = null; }
+      channel = sb.channel('fleet-changes');
       for (const table of [...TABLES, 'settings']) {
         channel.on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
           const row = payload.new?.id ? payload.new : payload.old;
