@@ -115,10 +115,18 @@ function lastBackupText(settings, today) {
   return `最終バックアップ: ${L.fmtDate(String(settings.lastBackupAt).slice(0, 10))}(${d === 0 ? '今日' : `${d} 日前`})`;
 }
 
+function backupInterval() {
+  return store.mode() === 'cloud' ? L.BACKUP_INTERVAL_DAYS_CLOUD : L.BACKUP_INTERVAL_DAYS;
+}
+
 function backupBanner(settings, vehicleCount, today) {
-  if (!L.backupDue(settings.lastBackupAt, vehicleCount, today)) return '';
+  if (!L.backupDue(settings.lastBackupAt, vehicleCount, today, backupInterval())) return '';
+  const cloud = store.mode() === 'cloud';
+  const why = cloud
+    ? 'データはクラウドに保存されていますが、念のため月 1 回は手元にも残してください。ファイルは会社の共有フォルダなどに置きます。'
+    : 'データはこの PC のブラウザにだけ保存されています。週 1 回を目安に書き出し、ファイルは会社の共有フォルダなどに置いてください。';
   return `<div class="banner backup" style="margin-bottom:16px">
-    <div><strong>バックアップを書き出してください</strong><div class="muted" style="font-size:12.5px">${esc(lastBackupText(settings, today))}。データはこの PC のブラウザにだけ保存されています。週 1 回を目安に書き出し、ファイルは会社の共有フォルダなどに置いてください。</div></div>
+    <div><strong>バックアップを書き出してください</strong><div class="muted" style="font-size:12.5px">${esc(lastBackupText(settings, today))}。${why}</div></div>
     <button class="btn primary" data-action="export-json">いまバックアップを書き出す</button>
   </div>`;
 }
@@ -660,7 +668,7 @@ function renderSettings(state) {
         <div class="card">
           <div class="card-head"><h2>データ</h2></div>
           <div class="card-body">
-            <div class="settings-row"><div><div>バックアップを書き出す</div><div class="desc">車両・整備記録・写真・設定をまとめた JSON。別の PC に移すときにも使います<br><strong>${esc(lastBackupText(s, L.todayISO()))}</strong></div></div><button class="btn ${L.backupDue(s.lastBackupAt, state.vehicles.length) ? 'primary' : ''}" data-action="export-json">書き出す</button></div>
+            <div class="settings-row"><div><div>バックアップを書き出す</div><div class="desc">車両・整備記録・写真・設定をまとめた JSON。別の PC に移すときにも使います<br><strong>${esc(lastBackupText(s, L.todayISO()))}</strong></div></div><button class="btn ${L.backupDue(s.lastBackupAt, state.vehicles.length, L.todayISO(), backupInterval()) ? 'primary' : ''}" data-action="export-json">書き出す</button></div>
             <div class="settings-row"><div><div>バックアップを読み込む</div><div class="desc">${cloud ? '共有データ全体がバックアップの内容に置き換わります(全員に影響)' : '今のデータは上書きされます'}</div></div><label class="btn">読み込む<input type="file" accept="application/json,.json" data-action-file="import-json" hidden></label></div>
             <div class="settings-row"><div><div>CSV で書き出す</div><div class="desc">Excel で開けます</div></div><div style="display:flex;gap:6px"><button class="btn small" data-action="export-vehicles-csv">車両</button><button class="btn small" data-action="export-records-csv">整備記録</button></div></div>
             <div class="settings-row"><div><div>車両を CSV で一括登録</div><div class="desc">テンプレートを Excel で埋めて読み込みます。ドライバー名とナンバーは必須、ほかは空欄でも可。同じナンバーの車両があれば上書きします</div></div><div style="display:flex;gap:6px"><button class="btn small" data-action="download-vehicle-template">テンプレート</button><label class="btn small">読み込む<input type="file" accept=".csv,text/csv" data-action-file="import-vehicles-csv" hidden></label></div></div>

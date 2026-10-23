@@ -285,3 +285,9 @@ test('jaAuthError: 既知のエラーは日本語、未知はそのまま', () =
   assert.equal(L.jaAuthError(new Error('TypeError: Failed to fetch')).message, '通信できませんでした。電波の状態を確認してください');
   assert.equal(L.jaAuthError({ message: 'something else' }).message, 'something else');
 });
+
+test('backupDue: 間隔を渡せる(クラウドは 30 日)', () => {
+  assert.equal(L.backupDue('2026-10-01T00:00:00Z', 5, '2026-10-20', L.BACKUP_INTERVAL_DAYS_CLOUD), false);
+  assert.equal(L.backupDue('2026-09-01T00:00:00Z', 5, '2026-10-20', L.BACKUP_INTERVAL_DAYS_CLOUD), true);
+  assert.equal(L.backupDue('2026-10-01T00:00:00Z', 5, '2026-10-20'), true);
+});

@@ -325,10 +325,13 @@ export function daysSinceBackup(lastBackupAt, today = todayISO()) {
 }
 
 /** バックアップを促すか。車両がなければ促さない。 */
-export function backupDue(lastBackupAt, vehicleCount, today = todayISO()) {
+export const BACKUP_INTERVAL_DAYS_CLOUD = 30;
+
+/** 催促を出すか。ローカルは 7 日、クラウド(共有)は 30 日ごと。 */
+export function backupDue(lastBackupAt, vehicleCount, today = todayISO(), intervalDays = BACKUP_INTERVAL_DAYS) {
   if (!vehicleCount) return false;
   const d = daysSinceBackup(lastBackupAt, today);
-  return d == null || d >= BACKUP_INTERVAL_DAYS;
+  return d == null || d >= intervalDays;
 }
 
 // ---- CSV ----
