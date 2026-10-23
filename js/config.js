@@ -2,7 +2,7 @@
 // 空のままだと「ローカルモード」(このブラウザだけに保存)で動きます。
 // Supabase の Project Settings → API Keys にある値を貼り付けてください(docs/運用手順.md 参照)。
 window.FLEET_CONFIG = {
-  SUPABASE_URL: '',
+  SUPABASE_URL: 'https://gjwjqbxzmvudawzxswpn.supabase.co',
   // 公開用のキー(publishable / anon)。秘密のキー(sb_secret_... / service_role)は絶対にここへ書かない
-  SUPABASE_ANON_KEY: '',
+  SUPABASE_ANON_KEY: 'sb_publishable_iUVhCdyt-_KIt9mJEt9RQg_Rxj1oO-7',
 };
