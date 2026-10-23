@@ -105,6 +105,27 @@ function render() {
   }
   $app.innerHTML = html;
   $app.scrollTop = 0;
+  if (route.name === 'settings' && store.mode() === 'cloud') fillAccountCard();
+}
+
+// 設定 → アカウントの招待コードとメンバー一覧(クラウドから取るので描画の後に入れる)
+async function fillAccountCard() {
+  const c = store.cloud();
+  const $code = document.getElementById('invite-code-box');
+  const $members = document.getElementById('members-box');
+  if (!c || !$code || !$members) return;
+  try {
+    const [company, members] = await Promise.all([c.company(), c.members()]);
+    const code = company?.invite_code || '';
+    $code.className = '';
+    $code.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><code class="invite-code">${esc(code)}</code><button class="btn small" data-action="copy-invite" data-code="${esc(code)}">コピー</button><button class="btn small ghost" data-action="regenerate-invite">作り直す</button></div>`;
+    const me = store.auth()?.userId();
+    $members.className = '';
+    $members.innerHTML = `<table class="members-table"><tbody>${members.map((m) => `<tr><td>${esc(m.email || '(メールなし)')}${m.user_id === me ? ' <span class="muted">(自分)</span>' : ''}</td><td class="muted nowrap">${esc(L.fmtDate(String(m.created_at || '').slice(0, 10)))} から</td><td class="right">${m.user_id === me ? '' : `<button class="btn small danger" data-action="remove-member" data-id="${esc(m.user_id)}" data-email="${esc(m.email || '')}">外す</button>`}</td></tr>`).join('')}</tbody></table>`;
+  } catch (err) {
+    $code.textContent = err.message || '取得できませんでした';
+    $members.textContent = '';
+  }
 }
 
 // ---- ダッシュボード ----
@@ -631,7 +652,8 @@ function renderSettings(state) {
           <div class="card-body">
             <div class="settings-row"><div><div>ログイン中</div><div class="desc">${esc(store.auth()?.userEmail() || '')}</div></div><button class="btn small" data-action="sign-out">ログアウト</button></div>
             <div class="settings-row"><div><div>パスワードを変更</div><div class="desc">このアカウントのパスワードを変えます</div></div><button class="btn small" data-action="change-password">変更</button></div>
-            <div class="settings-row"><div><div>利用者を追加する</div><div class="desc">管理者が Supabase の Authentication → Users → Add user でメールアドレスとパスワードを登録します</div></div></div>
+            <div class="settings-row"><div><div>招待コード</div><div class="desc">新しく使う人に伝えます。登録画面でこのコードを入れるとメンバーになります。漏れたら作り直してください</div></div><div id="invite-code-box" class="muted">読み込み中…</div></div>
+            <div class="settings-row" style="display:block"><div>メンバー</div><div class="desc" style="margin-bottom:8px">このデータを見られる人。外すとログインはできてもデータは見えなくなります(本人を Supabase から消すのは管理者)</div><div id="members-box" class="muted">読み込み中…</div></div>
           </div>
         </div>` : '';
   const chips = (items, kind) => `<div class="chips">${items.map((x) => `<span class="chip">${esc(x)}<button type="button" title="削除" data-action="remove-${kind}" data-value="${esc(x)}">×</button></span>`).join('')}</div>
@@ -1318,6 +1340,24 @@ document.addEventListener('click', (e) => {
       if (confirm('ログアウトしますか?')) store.auth()?.signOut();
       break;
     case 'change-password': openPasswordDialog(false); break;
+    case 'show-signup': renderSignup(); break;
+    case 'show-login': renderLogin(); break;
+    case 'sign-out-now': store.auth()?.signOut(); break;
+    case 'copy-invite': {
+      const code = el.dataset.code || '';
+      navigator.clipboard?.writeText(code).then(() => toast('招待コードをコピーしました')).catch(() => prompt('招待コード', code));
+      break;
+    }
+    case 'regenerate-invite':
+      if (confirm('招待コードを作り直します。古いコードでは登録できなくなります(すでに参加している人はそのまま使えます)。')) {
+        store.cloud().regenerateInviteCode().then(() => { toast('招待コードを作り直しました'); fillAccountCard(); }).catch((err) => toast(err.message, true));
+      }
+      break;
+    case 'remove-member':
+      if (confirm(`${el.dataset.email || 'この人'} をメンバーから外します。ログインはできますが、データは見えなくなります。`)) {
+        store.cloud().removeMember(id).then(() => { toast('メンバーから外しました'); fillAccountCard(); }).catch((err) => toast(err.message, true));
+      }
+      break;
     case 'reload-page': location.reload(); break;
     case 'forgot-password': {
       const email = (document.getElementById('login-email')?.value || '').trim() || prompt('登録しているメールアドレスを入力してください');
@@ -1497,7 +1537,34 @@ function renderLogin(message = '') {
       <button class="btn primary" type="submit" style="justify-content:center">ログイン</button>
       <button class="btn ghost small" type="button" data-action="forgot-password" style="justify-content:center">パスワードを忘れた</button>
     </form>
-    <p class="muted" style="font-size:12px;margin-top:14px;line-height:1.6">利用者の追加は管理者が行います。ログインできないときは管理者に連絡してください。</p>`);
+    <div class="login-switch">初めて使う人は <button type="button" class="linklike" data-action="show-signup">新しく登録</button>(招待コードが要ります)</div>`);
+}
+
+function renderSignup(message = '') {
+  showAuthScreen(`
+    <div class="login-brand"><img src="icons/icon.svg" alt=""><div><strong>車両管理</strong><small>新しく登録する</small></div></div>
+    ${message ? `<div class="form-errors" style="margin-bottom:12px"><ul><li>${esc(message)}</li></ul></div>` : ''}
+    <form id="signup-form" class="stack">
+      <div class="field required"><label for="signup-email">メールアドレス</label><input type="email" id="signup-email" name="email" autocomplete="username" required></div>
+      <div class="field required"><label for="signup-password">パスワード(6 文字以上)</label><input type="password" id="signup-password" name="password" minlength="6" autocomplete="new-password" required></div>
+      <div class="field required"><label for="signup-code">招待コード</label><input type="text" id="signup-code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" required><div class="hint">会社の管理者から受け取った 8 文字のコード</div></div>
+      <div class="form-errors hidden"></div>
+      <button class="btn primary" type="submit" style="justify-content:center">登録する</button>
+    </form>
+    <div class="login-switch">登録済みの人は <button type="button" class="linklike" data-action="show-login">ログイン</button></div>`);
+}
+
+function renderJoin(message = '') {
+  showAuthScreen(`
+    <div class="login-brand"><img src="icons/icon.svg" alt=""><div><strong>車両管理</strong><small>招待コードを入力</small></div></div>
+    <p style="margin:4px 0 14px;line-height:1.7">${esc(store.auth()?.userEmail() || '')} でログインしています。会社のデータを見るには、管理者から受け取った招待コードを入れてください。</p>
+    ${message ? `<div class="form-errors" style="margin-bottom:12px"><ul><li>${esc(message)}</li></ul></div>` : ''}
+    <form id="join-form" class="stack">
+      <div class="field required"><label for="join-code">招待コード</label><input type="text" id="join-code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" required></div>
+      <div class="form-errors hidden"></div>
+      <button class="btn primary" type="submit" style="justify-content:center">参加する</button>
+      <button class="btn ghost small" type="button" data-action="sign-out-now" style="justify-content:center">ログアウト</button>
+    </form>`);
 }
 
 function renderOffline() {
@@ -1519,6 +1586,8 @@ async function enterApp() {
   ready = false;
   const status = await store.reload();
   if (status === 'offline') return renderOffline();
+  if (status === 'needs-join') return renderJoin();
+  if (status === 'needs-auth') return renderLogin();
   await photos.init(store.cloudClient(), L.collectPhotoIds(store.getState()));
   document.body.classList.remove('auth');
   updateFooter();
@@ -1557,6 +1626,7 @@ async function boot() {
       });
     }
     if (status === 'needs-auth') return renderLogin();
+    if (status === 'needs-join') return renderJoin();
     if (status === 'offline') return renderOffline();
     await photos.init(store.cloudClient(), L.collectPhotoIds(store.getState()));
     document.body.classList.remove('auth');
@@ -1570,18 +1640,28 @@ async function boot() {
 
 document.addEventListener('submit', async (e) => {
   const form = e.target;
-  if (form.id !== 'login-form') return;
+  if (!['login-form', 'signup-form', 'join-form'].includes(form.id)) return;
   e.preventDefault();
   const btn = form.querySelector('button[type=submit]');
   const box = form.querySelector('.form-errors');
   const fd = new FormData(form);
+  const v = (k) => String(fd.get(k) ?? '').trim();
   btn.disabled = true;
   box.classList.add('hidden');
   try {
-    await store.auth().signIn(String(fd.get('email')).trim(), String(fd.get('password')));
-    await enterApp();
+    if (form.id === 'login-form') {
+      await store.auth().signIn(v('email'), String(fd.get('password')));
+      await enterApp();
+    } else if (form.id === 'signup-form') {
+      const r = await store.auth().signUp(v('email'), String(fd.get('password')), v('code'));
+      if (r === 'confirm-email') { renderLogin('確認メールを送りました。メールのリンクを開いてから、ここでログインして招待コードを入れてください'); return; }
+      await enterApp();
+    } else {
+      await store.auth().join(v('code'));
+      await enterApp();
+    }
   } catch (err) {
-    box.innerHTML = `<ul><li>${esc(err.message || 'ログインできませんでした')}</li></ul>`;
+    box.innerHTML = `<ul><li>${esc(err.message || '失敗しました')}</li></ul>`;
     box.classList.remove('hidden');
     btn.disabled = false;
   }

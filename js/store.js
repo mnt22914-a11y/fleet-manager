@@ -70,7 +70,7 @@ function readConfig() {
   return url && key ? { url, key } : null;
 }
 
-/** 'ready' | 'needs-auth' | 'offline' を返す。ready のときは state が読み込み済み。 */
+/** 'ready' | 'needs-auth' | 'needs-join' | 'offline' を返す。ready のときは state が読み込み済み。 */
 export async function init() {
   const cfg = readConfig();
   if (cfg) {
@@ -101,9 +101,24 @@ async function loadFromBackend() {
   return 'ready';
 }
 
-/** ログイン直後など、backend はそのままで読み直す。 */
+/** ログイン直後など、backend はそのままで読み直す。メンバーでなければ 'needs-join'。 */
 export async function reload() {
+  if (backend.mode === 'cloud') {
+    const status = await backend.init();
+    if (status !== 'ready') return status;
+  }
   return loadFromBackend();
+}
+
+/** クラウドのメンバー管理(招待コード・メンバー一覧)。ローカルでは null。 */
+export function cloud() {
+  if (backend?.mode !== 'cloud') return null;
+  return {
+    company: () => backend.company(),
+    members: () => backend.members(),
+    removeMember: (id) => backend.removeMember(id),
+    regenerateInviteCode: () => backend.regenerateInviteCode(),
+  };
 }
 
 export function mode() {

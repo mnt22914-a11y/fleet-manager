@@ -42,6 +42,12 @@ export async function createSupabaseBackend(url, anonKey) {
     }
   }
 
+  async function isMember() {
+    const { data, error } = await sb.rpc('is_member');
+    if (error) throw jaAuthError(error);
+    return data === true;
+  }
+
   return {
     mode: 'cloud',
     client: sb,
@@ -55,7 +61,22 @@ export async function createSupabaseBackend(url, anonKey) {
         return remembered && !navigator.onLine ? 'offline' : 'needs-auth';
       }
       keepStorage();
-      return 'ready';
+      return (await isMember()) ? 'ready' : 'needs-join';
+    },
+
+    // ---- メンバー管理(サインアップ制。招待コードを知っている人だけがメンバーになれる) ----
+    async company() {
+      const rows = check(await sb.from('company').select('invite_code').eq('id', 1));
+      return rows[0] || null;
+    },
+    async members() {
+      return check(await sb.from('members').select('user_id,email,created_at').order('created_at'));
+    },
+    async removeMember(userId) {
+      check(await sb.from('members').delete().eq('user_id', userId));
+    },
+    async regenerateInviteCode() {
+      return check(await sb.rpc('regenerate_invite_code'));
     },
 
     async loadAll() {
@@ -120,6 +141,20 @@ export async function createSupabaseBackend(url, anonKey) {
         await sb.auth.signOut();
         user = null;
       },
+      /** 新規登録。'ok'(すぐ使える)か 'confirm-email'(確認メールを開いてからログイン)を返す。 */
+      async signUp(email, password, inviteCode) {
+        const data = check(await sb.auth.signUp({ email, password }));
+        if (!data.session) return 'confirm-email';
+        user = data.user;
+        keepStorage();
+        await this.join(inviteCode);
+        return 'ok';
+      },
+      /** 招待コードでメンバーになる。 */
+      async join(inviteCode) {
+        check(await sb.rpc('join_company', { p_code: String(inviteCode || '').trim() }));
+      },
+      userId() { return user?.id || ''; },
       async resetPassword(email) {
         const redirectTo = location.origin + location.pathname;
         check(await sb.auth.resetPasswordForEmail(email, { redirectTo }));

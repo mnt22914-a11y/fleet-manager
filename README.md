@@ -32,11 +32,11 @@ python3 -m http.server 8080
 ### 複数人で共有する(クラウド版)
 
 1. Supabase でプロジェクトを作り、SQL Editor で `supabase/schema.sql` を Run する
-2. Authentication → Users で使う人を追加し、Sign up は OFF にする
+2. 続けて `supabase/02_signup.sql` を Run(サインアップ制 + 招待コード)。Authentication → Providers → Email で Sign up を ON、Confirm email を OFF
 3. `js/config.js` に Project URL と publishable key を貼る
 4. GitHub Pages に置く(ビルド不要、フォルダをそのまま)。公開中: https://mnt22914-a11y.github.io/fleet-manager/
 
-手順の詳細は docs/運用手順.md の 7 章。ログインした人は全員が同じデータを読み書きし、未ログインは何も見えません(RLS)。写真は Storage のバケット photos に入ります。
+手順の詳細は docs/運用手順.md の 7 章。利用者は「新しく登録」からメール・パスワード・招待コードで自分で登録します。招待コードでメンバーになった人だけがデータを読み書きでき、メンバー以外(未ログイン・コード未入力)は何も見えません(RLS)。招待コードとメンバー一覧は設定 → アカウント。写真は Storage のバケット photos に入ります。
 
 ## 構成
 
@@ -49,6 +49,7 @@ js/backend-local.js   backend: localStorage(config.js が空のとき)
 js/backend-supabase.js backend: Supabase(認証・jsonb の 4 テーブル・Realtime)
 js/config.js          Supabase の URL と publishable key(空ならローカル)
 supabase/schema.sql   テーブル・RLS・権限・Realtime・写真バケットの定義(SQL Editor で 1 回 Run)
+supabase/02_signup.sql サインアップ制: company(招待コード)・members・is_member()・join_company()・RLS をメンバー限定に(schema.sql の後に 1 回 Run)
 js/sample.js          固定シードのサンプルデータ
 js/views2d.js         車体の 5 面図(img/ の図面画像 + 透明な部位の領域)
 js/regions2d.js       部位の領域(画像ピクセル座標)
