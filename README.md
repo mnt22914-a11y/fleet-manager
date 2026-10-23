@@ -34,7 +34,7 @@ python3 -m http.server 8080
 1. Supabase でプロジェクトを作り、SQL Editor で `supabase/schema.sql` を Run する
 2. Authentication → Users で使う人を追加し、Sign up は OFF にする
 3. `js/config.js` に Project URL と publishable key を貼る
-4. GitHub Pages などに置く(ビルド不要、フォルダをそのまま)
+4. GitHub Pages に置く(ビルド不要、フォルダをそのまま)。公開中: https://mnt22914-a11y.github.io/fleet-manager/
 
 手順の詳細は docs/運用手順.md の 7 章。ログインした人は全員が同じデータを読み書きし、未ログインは何も見えません(RLS)。写真は Storage のバケット photos に入ります。
 
