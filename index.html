@@ -25,7 +25,7 @@
         <a href="#/maintenance" data-route="maintenance"><svg viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0 5 5L9 22l-3-3 10.5-10.5z"/><path d="M15 5l4 4"/></svg>整備記録</a>
         <a href="#/settings" data-route="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4L18 18M18 6l-1.6 1.6M7.6 16.4L6 18"/></svg>設定</a>
       </nav>
-      <footer>保存先: このブラウザ(ローカル)</footer>
+      <footer id="sidebar-footer">保存先: このブラウザ(ローカル)</footer>
     </aside>
     <main id="app"><p class="empty">読み込み中…</p></main>
   </div>
@@ -37,6 +37,7 @@
   </nav>
   <div id="dialog-root"></div>
   <div id="toast" role="status" aria-live="polite"></div>
+  <script src="js/config.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

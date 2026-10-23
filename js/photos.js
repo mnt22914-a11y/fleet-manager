@@ -1,13 +1,22 @@
-// 写真の保存。localStorage には入りきらないので IndexedDB に Blob で持つ。
-// 保存時に長辺 1280px の JPEG に縮小する。画面からは url(id) で同期的に参照できるよう、起動時にまとめて読み込む。
+// 写真の保存。
+// ローカルモード: localStorage には入りきらないので IndexedDB に Blob で持つ。
+// クラウドモード: Supabase Storage のバケット photos に `<id>.jpg` で置き、署名付き URL(期限つき)で表示する。
+// どちらも、画面からは url(id) で同期的に参照できるよう、先に URL を用意しておく。
+// 保存時に長辺 1280px の JPEG に縮小する。
 
 import { uid, nowISO } from './logic.js';
 
 const DB = 'fleet-photos';
 const STORE = 'photos';
+const BUCKET = 'photos';
+const SIGNED_TTL = 60 * 60 * 12; // 署名付き URL の有効期間(秒)。半分過ぎたら取り直す
+
 let db = null;
-const urls = new Map();   // id → object URL
-const memory = new Map(); // IndexedDB が使えない環境のための退避先
+let sb = null;             // クラウドのときだけ Supabase クライアント
+const urls = new Map();    // id → 表示用 URL(object URL か署名付き URL)
+const memory = new Map();  // IndexedDB が使えない環境のための退避先
+let signedAt = 0;
+let onLoaded = () => {};
 
 function open() {
   return new Promise((resolve, reject) => {
@@ -39,9 +48,44 @@ function getAll() {
   });
 }
 
-export async function init() {
+const path = (id) => `${id}.jpg`;
+
+/**
+ * 起動時に呼ぶ。client が null ならローカル(IndexedDB)、あれば Supabase Storage。
+ * クラウドのときは ids(state に出てくる写真 ID)の署名付き URL をまとめて取る。
+ */
+export async function init(client = null, ids = []) {
+  sb = client || null;
+  if (sb) {
+    await ensure(ids, true);
+    return;
+  }
   try { db = await open(); } catch { db = null; }
   for (const p of await getAll()) urls.set(p.id, URL.createObjectURL(p.blob));
+}
+
+/** 新しい写真 ID が画面に出てきて URL が取れたら呼ばれる(再描画のため)。 */
+export function setOnLoaded(fn) {
+  onLoaded = fn || (() => {});
+}
+
+/** クラウド: まだ URL を持っていない id の署名付き URL を取る。期限が近ければ全部取り直す。 */
+export async function ensure(ids, force = false) {
+  if (!sb) return;
+  const stale = Date.now() - signedAt > (SIGNED_TTL / 2) * 1000;
+  const want = force || stale ? [...new Set(ids)] : [...new Set(ids)].filter((id) => !urls.has(id));
+  if (!want.length) return;
+  const { data, error } = await sb.storage.from(BUCKET).createSignedUrls(want.map(path), SIGNED_TTL);
+  if (error) throw error;
+  let added = false;
+  for (const row of data || []) {
+    if (!row.signedUrl) continue; // 無いファイルは飛ばす(error が入る)
+    const id = row.path.replace(/\.jpg$/, '');
+    if (!urls.has(id)) added = true;
+    urls.set(id, row.signedUrl);
+  }
+  signedAt = Date.now();
+  if (added) onLoaded();
 }
 
 export function url(id) {
@@ -69,6 +113,14 @@ async function shrink(file, max = 1280) {
 }
 
 async function put(rec) {
+  if (sb) {
+    const { error } = await sb.storage.from(BUCKET).upload(path(rec.id), rec.blob, { contentType: 'image/jpeg', upsert: true });
+    if (error) throw new Error(`写真を保存できませんでした: ${error.message}`);
+    const { data, error: e2 } = await sb.storage.from(BUCKET).createSignedUrl(path(rec.id), SIGNED_TTL);
+    if (e2) throw e2;
+    urls.set(rec.id, data.signedUrl);
+    return;
+  }
   if (db) await tx('readwrite', (s) => s.put(rec));
   else memory.set(rec.id, rec);
   urls.set(rec.id, URL.createObjectURL(rec.blob));
@@ -83,18 +135,42 @@ export async function addFile(file) {
 
 export async function remove(id) {
   if (!id) return;
-  if (db) await tx('readwrite', (s) => s.delete(id));
+  if (sb) {
+    await sb.storage.from(BUCKET).remove([path(id)]);
+  } else if (db) await tx('readwrite', (s) => s.delete(id));
   else memory.delete(id);
   const u = urls.get(id);
-  if (u) URL.revokeObjectURL(u);
+  if (u && u.startsWith('blob:')) URL.revokeObjectURL(u);
   urls.delete(id);
 }
 
 export async function removeMany(ids) {
+  if (sb && ids?.length) {
+    await sb.storage.from(BUCKET).remove(ids.map(path));
+    for (const id of ids) urls.delete(id);
+    return;
+  }
   for (const id of ids || []) await remove(id);
 }
 
+async function listCloud() {
+  const out = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await sb.storage.from(BUCKET).list('', { limit: 1000, offset });
+    if (error) throw error;
+    out.push(...(data || []).filter((f) => f.name.endsWith('.jpg')).map((f) => f.name.replace(/\.jpg$/, '')));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
 export async function clear() {
+  if (sb) {
+    const ids = await listCloud();
+    for (let i = 0; i < ids.length; i += 100) await sb.storage.from(BUCKET).remove(ids.slice(i, i + 100).map(path));
+    urls.clear();
+    return;
+  }
   if (db) await tx('readwrite', (s) => s.clear());
   memory.clear();
   for (const u of urls.values()) URL.revokeObjectURL(u);
@@ -108,6 +184,14 @@ function blobToDataURL(blob) {
 /** バックアップ用: [{ id, createdAt, dataUrl }] */
 export async function exportAll() {
   const out = [];
+  if (sb) {
+    for (const id of await listCloud()) {
+      const { data, error } = await sb.storage.from(BUCKET).download(path(id));
+      if (error || !data) continue;
+      out.push({ id, createdAt: '', dataUrl: await blobToDataURL(data) });
+    }
+    return out;
+  }
   for (const p of await getAll()) out.push({ id: p.id, createdAt: p.createdAt, dataUrl: await blobToDataURL(p.blob) });
   return out;
 }

@@ -562,3 +562,70 @@ export function validateIssue(i) {
   if (i.status === 'fixed' && i.fixedAt && !isValidDate(i.fixedAt)) errors.push('対応日の日付が正しくありません');
   return errors;
 }
+
+// ---- 共有(クラウド同期)まわりの純粋関数 ----
+
+/** id で一致する要素を置き換える。無ければ末尾に足す。元の配列は変えない。 */
+export function upsertById(list, item) {
+  const i = list.findIndex((x) => x.id === item.id);
+  if (i < 0) return [...list, item];
+  const out = list.slice();
+  out[i] = item;
+  return out;
+}
+
+export function removeById(list, id) {
+  return list.filter((x) => x.id !== id);
+}
+
+/**
+ * 他の端末からの変更を state に反映する。
+ * change = { table: 'vehicles'|'records'|'issues'|'settings', type: 'INSERT'|'UPDATE'|'DELETE', id, data }
+ * 自分がいま書いたばかりの行(ローカルの updatedAt のほうが新しい)は上書きしない。
+ * 変化が無ければ同じ state を返す(再描画の要否を === で判定できる)。
+ */
+export function applyRemoteChange(state, change) {
+  const { table, type, id, data } = change || {};
+  if (table === 'settings') {
+    if (type === 'DELETE') return { ...state, settings: { ...DEFAULT_SETTINGS } };
+    if (!data) return state;
+    return { ...state, settings: { ...DEFAULT_SETTINGS, ...data } };
+  }
+  if (!['vehicles', 'records', 'issues'].includes(table) || !id) return state;
+  const list = state[table];
+  if (type === 'DELETE') {
+    if (!list.some((x) => x.id === id)) return state;
+    return { ...state, [table]: removeById(list, id) };
+  }
+  if (!data) return state;
+  const local = list.find((x) => x.id === id);
+  if (local && local.updatedAt && data.updatedAt && local.updatedAt > data.updatedAt) return state;
+  if (local && JSON.stringify(local) === JSON.stringify(data)) return state;
+  return { ...state, [table]: upsertById(list, data) };
+}
+
+/** 整備記録と異常に付いている写真 ID をすべて集める(重複なし)。 */
+export function collectPhotoIds(state) {
+  const ids = new Set();
+  for (const r of state.records || []) for (const p of r.photos || []) ids.add(p);
+  for (const i of state.issues || []) for (const p of i.photos || []) ids.add(p);
+  return [...ids];
+}
+
+/** Supabase のエラー文を日本語にする。 */
+export function jaAuthError(error) {
+  const msg = error?.message || String(error);
+  const table = [
+    ['Invalid login credentials', 'メールアドレスかパスワードが違います'],
+    ['Email not confirmed', '確認メールのリンクを開いてからログインしてください'],
+    ['Password should be at least', 'パスワードは 6 文字以上にしてください'],
+    ['New password should be different', '今と同じパスワードは使えません'],
+    ['Failed to fetch', '通信できませんでした。電波の状態を確認してください'],
+    ['rate limit', 'しばらく待ってからもう一度試してください'],
+    ['Signups not allowed', '新しい利用者は管理者が追加します'],
+    ['JWT expired', 'ログインの期限が切れました。もう一度ログインしてください'],
+    ['row-level security', 'この操作をする権限がありません'],
+  ];
+  for (const [en, ja] of table) if (msg.toLowerCase().includes(en.toLowerCase())) return new Error(ja);
+  return new Error(msg);
+}

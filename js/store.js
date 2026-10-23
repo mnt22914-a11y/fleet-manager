@@ -1,9 +1,13 @@
-// 保存層。いまは localStorage だが、将来 Supabase に差し替えられるよう
-// 画面側はこのモジュールの関数だけを呼ぶ(直接 localStorage を触らない)。
+// 保存層。画面側はこのモジュールの関数だけを呼ぶ(直接 localStorage や Supabase を触らない)。
+// 中身はメモリ上の state。保存先(backend)は js/config.js が空ならローカル(localStorage)、
+// Supabase の URL とキーが入っていればクラウド(ログインした人全員で共有)。
+// 読み書きの手順:
+//   1. 画面の操作 → state を先に書き換えて購読者に通知(すぐ画面が変わる)
+//   2. その後ろで backend に書く(失敗したら onError に知らせる)
+//   3. 他の端末の変更は backend.onChange → applyRemoteChange で state に反映
 
-import { DEFAULT_SETTINGS, uid, nowISO } from './logic.js';
-
-const KEY = 'fleet.v1';
+import { DEFAULT_SETTINGS, uid, nowISO, applyRemoteChange } from './logic.js';
+import { createLocalBackend } from './backend-local.js';
 
 function emptyState() {
   return { version: 1, vehicles: [], records: [], issues: [], settings: { ...DEFAULT_SETTINGS } };
@@ -38,21 +42,89 @@ function normalize(raw) {
   return s;
 }
 
-function load() {
-  try {
-    return normalize(JSON.parse(localStorage.getItem(KEY)));
-  } catch {
-    return emptyState();
-  }
-}
-
-let state = load();
+let state = emptyState();
+let backend = null;
 const listeners = new Set();
+const errorListeners = new Set();
 
-function persist() {
-  localStorage.setItem(KEY, JSON.stringify(state));
+function notify() {
   for (const fn of listeners) fn(state);
 }
+
+// backend への書き込みは順番を守る(前の書き込みが終わってから次を送る)
+let queue = Promise.resolve();
+function write(fn) {
+  queue = queue.then(fn).catch((e) => {
+    const msg = e?.message || '保存に失敗しました';
+    for (const fn of errorListeners) fn(`保存に失敗しました: ${msg}`);
+  });
+  return queue;
+}
+
+// ---- 起動 ----
+
+function readConfig() {
+  const c = globalThis.FLEET_CONFIG || {};
+  const url = String(c.SUPABASE_URL || '').trim();
+  const key = String(c.SUPABASE_ANON_KEY || '').trim();
+  return url && key ? { url, key } : null;
+}
+
+/** 'ready' | 'needs-auth' | 'offline' を返す。ready のときは state が読み込み済み。 */
+export async function init() {
+  const cfg = readConfig();
+  if (cfg) {
+    const { createSupabaseBackend } = await import('./backend-supabase.js');
+    backend = await createSupabaseBackend(cfg.url, cfg.key);
+  } else {
+    backend = createLocalBackend(() => state);
+  }
+  const status = await backend.init();
+  if (status !== 'ready') return status;
+  return loadFromBackend();
+}
+
+async function loadFromBackend() {
+  try {
+    state = normalize(await backend.loadAll());
+  } catch (e) {
+    if (e?.offline) return 'offline';
+    throw e;
+  }
+  backend.onChange((change) => {
+    const next = applyRemoteChange(state, change);
+    if (next === state) return;
+    state = normalize(next);
+    notify();
+  });
+  notify();
+  return 'ready';
+}
+
+/** ログイン直後など、backend はそのままで読み直す。 */
+export async function reload() {
+  return loadFromBackend();
+}
+
+export function mode() {
+  return backend?.mode || 'local';
+}
+
+export function auth() {
+  return backend?.auth || null;
+}
+
+/** 写真の保存先(photos.js が使う)。クラウドなら Supabase クライアント、ローカルなら null。 */
+export function cloudClient() {
+  return backend?.client || null;
+}
+
+export function onError(fn) {
+  errorListeners.add(fn);
+  return () => errorListeners.delete(fn);
+}
+
+// ---- 読む ----
 
 export function getState() {
   return state;
@@ -71,50 +143,74 @@ export function recordsOf(vehicleId) {
   return state.records.filter((r) => r.vehicleId === vehicleId).sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || '')));
 }
 
+export function issuesOf(vehicleId) {
+  return state.issues.filter((i) => i.vehicleId === vehicleId);
+}
+
+// ---- 書く ----
+
 export function upsertVehicle(input) {
   const now = nowISO();
   const i = state.vehicles.findIndex((v) => v.id === input.id);
+  let row;
   if (i >= 0) {
-    state.vehicles[i] = { ...state.vehicles[i], ...input, updatedAt: now };
+    row = state.vehicles[i] = { ...state.vehicles[i], ...input, updatedAt: now };
   } else {
-    state.vehicles.push({ ...input, id: input.id || uid(), createdAt: now, updatedAt: now });
+    row = { ...input, id: input.id || uid(), createdAt: now, updatedAt: now };
+    state.vehicles.push(row);
   }
-  persist();
-  return input.id || state.vehicles[state.vehicles.length - 1].id;
+  notify();
+  write(() => backend.upsert('vehicles', [row]));
+  return row.id;
 }
 
 /** CSV 取り込みなどで複数台をまとめて登録・更新する(保存は 1 回)。 */
 export function upsertVehicles(list) {
   const now = nowISO();
   let added = 0, updated = 0;
+  const rows = [];
   for (const input of list) {
     const i = input.id ? state.vehicles.findIndex((v) => v.id === input.id) : -1;
-    if (i >= 0) { state.vehicles[i] = { ...state.vehicles[i], ...input, updatedAt: now }; updated++; }
-    else { state.vehicles.push({ ...input, id: input.id || uid(), createdAt: now, updatedAt: now }); added++; }
+    let row;
+    if (i >= 0) { row = state.vehicles[i] = { ...state.vehicles[i], ...input, updatedAt: now }; updated++; }
+    else { row = { ...input, id: input.id || uid(), createdAt: now, updatedAt: now }; state.vehicles.push(row); added++; }
+    rows.push(row);
   }
-  persist();
+  notify();
+  write(() => backend.upsert('vehicles', rows));
   return { added, updated };
 }
 
 export function removeVehicle(id) {
+  const now = nowISO();
   state.vehicles = state.vehicles.filter((v) => v.id !== id);
-  for (const v of state.vehicles) if (v.loaner?.type === 'own' && v.loaner.vehicleId === id) v.loaner = null;
+  const touched = [];
+  for (const v of state.vehicles) if (v.loaner?.type === 'own' && v.loaner.vehicleId === id) { v.loaner = null; v.updatedAt = now; touched.push(v); }
+  const recIds = state.records.filter((r) => r.vehicleId === id).map((r) => r.id);
+  const issueIds = state.issues.filter((i) => i.vehicleId === id).map((i) => i.id);
   state.records = state.records.filter((r) => r.vehicleId !== id);
   state.issues = state.issues.filter((i) => i.vehicleId !== id);
-  persist();
+  notify();
+  write(async () => {
+    await backend.remove('records', recIds);
+    await backend.remove('issues', issueIds);
+    await backend.remove('vehicles', [id]);
+    await backend.upsert('vehicles', touched);
+  });
 }
 
 export function upsertRecord(input) {
   const now = nowISO();
   const i = state.records.findIndex((r) => r.id === input.id);
-  let id = input.id;
+  let row;
   if (i >= 0) {
-    state.records[i] = { ...state.records[i], ...input, updatedAt: now };
+    row = state.records[i] = { ...state.records[i], ...input, updatedAt: now };
   } else {
-    id = input.id || uid();
-    state.records.push({ ...input, id, createdAt: now, updatedAt: now });
+    row = { ...input, id: input.id || uid(), createdAt: now, updatedAt: now };
+    state.records.push(row);
   }
   // 整備時の走行距離が車両の現在値より大きければ車両側も更新する
+  let touchedVehicle = null;
   const v = getVehicle(input.vehicleId);
   if (v && input.odometer !== '' && input.odometer != null) {
     const km = Number(input.odometer);
@@ -122,65 +218,73 @@ export function upsertRecord(input) {
       v.odometer = km;
       v.odometerDate = input.date;
       v.updatedAt = now;
+      touchedVehicle = v;
     }
   }
-  persist();
-  return id;
+  notify();
+  write(async () => {
+    await backend.upsert('records', [row]);
+    if (touchedVehicle) await backend.upsert('vehicles', [touchedVehicle]);
+  });
+  return row.id;
 }
 
 export function removeRecord(id) {
   state.records = state.records.filter((r) => r.id !== id);
-  persist();
-}
-
-export function issuesOf(vehicleId) {
-  return state.issues.filter((i) => i.vehicleId === vehicleId);
+  notify();
+  write(() => backend.remove('records', [id]));
 }
 
 export function upsertIssue(input) {
   const now = nowISO();
   const i = state.issues.findIndex((x) => x.id === input.id);
-  let id = input.id;
+  let row;
   if (i >= 0) {
-    state.issues[i] = { ...state.issues[i], ...input, updatedAt: now };
+    row = state.issues[i] = { ...state.issues[i], ...input, updatedAt: now };
   } else {
-    id = input.id || uid();
-    state.issues.push({ ...input, id, createdAt: now, updatedAt: now });
+    row = { ...input, id: input.id || uid(), createdAt: now, updatedAt: now };
+    state.issues.push(row);
   }
-  persist();
-  return id;
+  notify();
+  write(() => backend.upsert('issues', [row]));
+  return row.id;
 }
 
 export function removeIssue(id) {
   state.issues = state.issues.filter((i) => i.id !== id);
-  persist();
+  notify();
+  write(() => backend.remove('issues', [id]));
 }
 
 export function updateSettings(patch) {
   state.settings = { ...state.settings, ...patch };
-  persist();
+  notify();
+  const snapshot = state.settings;
+  write(() => backend.saveSettings(snapshot));
 }
 
 export function exportJSON() {
   return JSON.stringify({ ...state, exportedAt: nowISO() }, null, 2);
 }
 
-/** バックアップ JSON を読み込む。形が違えば例外。 */
+/** バックアップ JSON を読み込む。形が違えば例外。保存が終わるまで待てる。 */
 export function importJSON(text) {
   const raw = JSON.parse(text);
   if (!raw || !Array.isArray(raw.vehicles) || !Array.isArray(raw.records)) {
     throw new Error('車両管理アプリのバックアップファイルではありません');
   }
-  state = normalize(raw);
-  persist();
+  return replaceAll(raw);
 }
 
 export function replaceAll(data) {
   state = normalize(data);
-  persist();
+  notify();
+  const snapshot = state;
+  return write(() => backend.replaceAll(snapshot));
 }
 
 export function clearAll() {
   state = emptyState();
-  persist();
+  notify();
+  return write(() => backend.clearAll());
 }

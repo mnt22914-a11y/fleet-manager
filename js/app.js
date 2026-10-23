@@ -616,12 +616,23 @@ function renderMaintenance(state, today) {
 
 function renderSettings(state) {
   const s = state.settings;
+  const cloud = store.mode() === 'cloud';
+  const account = cloud ? `
+        <div class="card">
+          <div class="card-head"><h2>アカウント</h2></div>
+          <div class="card-body">
+            <div class="settings-row"><div><div>ログイン中</div><div class="desc">${esc(store.auth()?.userEmail() || '')}</div></div><button class="btn small" data-action="sign-out">ログアウト</button></div>
+            <div class="settings-row"><div><div>パスワードを変更</div><div class="desc">このアカウントのパスワードを変えます</div></div><button class="btn small" data-action="change-password">変更</button></div>
+            <div class="settings-row"><div><div>利用者を追加する</div><div class="desc">管理者が Supabase の Authentication → Users → Add user でメールアドレスとパスワードを登録します</div></div></div>
+          </div>
+        </div>` : '';
   const chips = (items, kind) => `<div class="chips">${items.map((x) => `<span class="chip">${esc(x)}<button type="button" title="削除" data-action="remove-${kind}" data-value="${esc(x)}">×</button></span>`).join('')}</div>
     <form class="add-row" data-form="add-${kind}"><input type="text" name="value" placeholder="${kind === 'base' ? 'チーム名を追加' : '種別を追加'}" required><button class="btn" type="submit">追加</button></form>`;
   return `
     <div class="page-head"><div><h1>設定</h1><p class="sub">アラートの基準、チーム、データの保管</p></div></div>
     <div class="grid grid-2">
       <div class="stack">
+        ${account}
         <div class="card">
           <div class="card-head"><h2>基本</h2></div>
           <div class="card-body">
@@ -650,19 +661,19 @@ function renderSettings(state) {
           <div class="card-head"><h2>データ</h2></div>
           <div class="card-body">
             <div class="settings-row"><div><div>バックアップを書き出す</div><div class="desc">車両・整備記録・写真・設定をまとめた JSON。別の PC に移すときにも使います<br><strong>${esc(lastBackupText(s, L.todayISO()))}</strong></div></div><button class="btn ${L.backupDue(s.lastBackupAt, state.vehicles.length) ? 'primary' : ''}" data-action="export-json">書き出す</button></div>
-            <div class="settings-row"><div><div>バックアップを読み込む</div><div class="desc">今のデータは上書きされます</div></div><label class="btn">読み込む<input type="file" accept="application/json,.json" data-action-file="import-json" hidden></label></div>
+            <div class="settings-row"><div><div>バックアップを読み込む</div><div class="desc">${cloud ? '共有データ全体がバックアップの内容に置き換わります(全員に影響)' : '今のデータは上書きされます'}</div></div><label class="btn">読み込む<input type="file" accept="application/json,.json" data-action-file="import-json" hidden></label></div>
             <div class="settings-row"><div><div>CSV で書き出す</div><div class="desc">Excel で開けます</div></div><div style="display:flex;gap:6px"><button class="btn small" data-action="export-vehicles-csv">車両</button><button class="btn small" data-action="export-records-csv">整備記録</button></div></div>
             <div class="settings-row"><div><div>車両を CSV で一括登録</div><div class="desc">テンプレートを Excel で埋めて読み込みます。ドライバー名とナンバーは必須、ほかは空欄でも可。同じナンバーの車両があれば上書きします</div></div><div style="display:flex;gap:6px"><button class="btn small" data-action="download-vehicle-template">テンプレート</button><label class="btn small">読み込む<input type="file" accept=".csv,text/csv" data-action-file="import-vehicles-csv" hidden></label></div></div>
-            <div class="settings-row"><div><div>サンプルデータを入れる</div><div class="desc">試作用の 24 台と整備履歴。今のデータは上書きされます</div></div><button class="btn" data-action="load-sample">入れる</button></div>
-            <div class="settings-row"><div><div>すべて削除</div><div class="desc">このブラウザに保存した全データを消します</div></div><button class="btn danger" data-action="clear-all">削除</button></div>
+            <div class="settings-row"><div><div>サンプルデータを入れる</div><div class="desc">試作用の 24 台と整備履歴。${cloud ? '共有データ全体が置き換わります(全員に影響)' : '今のデータは上書きされます'}</div></div><button class="btn" data-action="load-sample">入れる</button></div>
+            <div class="settings-row"><div><div>すべて削除</div><div class="desc">${cloud ? '共有している全データを消します(全員に影響)' : 'このブラウザに保存した全データを消します'}</div></div><button class="btn danger" data-action="clear-all">削除</button></div>
           </div>
         </div>
         <div class="card">
           <div class="card-head"><h2>このアプリについて</h2></div>
           <div class="card-body muted" style="font-size:13px;line-height:1.7">
-            データはこのブラウザの中(localStorage)だけに保存され、サーバーには送られません。<br>
-            ブラウザのデータを消すと失われるので、定期的に「バックアップを書き出す」を使ってください。<br>
-            複数人で共有するときは、クラウド同期版(Supabase)に切り替える予定です。
+            ${cloud
+              ? 'データはクラウド(Supabase)に保存され、ログインした人全員で同じ内容を見ます。誰かが変更すると他の画面にもすぐ反映されます。<br>写真もクラウドに保存されます。念のため月に 1 回は「バックアップを書き出す」で手元にも残してください。'
+              : 'データはこのブラウザの中(localStorage)だけに保存され、サーバーには送られません。<br>ブラウザのデータを消すと失われるので、定期的に「バックアップを書き出す」を使ってください。<br>複数人で共有するときは js/config.js に Supabase の設定を入れます(docs/運用手順.md)。'}
           </div>
         </div>
       </div>
@@ -1241,7 +1252,7 @@ document.addEventListener('click', (e) => {
       if (confirm(`${vehicleLabel(v)} を削除します。${n ? `整備記録 ${n} 件も一緒に消えます。` : ''}元に戻せません。`)) {
         const ids = [...store.recordsOf(id), ...store.issuesOf(id)].flatMap((x) => x.photos || []);
         store.removeVehicle(id);
-        photos.removeMany(ids);
+        photos.removeMany(ids).catch(() => {});
         toast('削除しました');
         location.hash = '#/vehicles';
       }
@@ -1295,6 +1306,17 @@ document.addEventListener('click', (e) => {
     case 'set-view': ui.vehicles.view = el.dataset.view; render(); break;
     case 'view-photo': openLightbox(el.dataset.photo); break;
     case 'export-vehicles-csv': exportVehiclesCSV(); break;
+    case 'sign-out':
+      if (confirm('ログアウトしますか?')) store.auth()?.signOut();
+      break;
+    case 'change-password': openPasswordDialog(false); break;
+    case 'reload-page': location.reload(); break;
+    case 'forgot-password': {
+      const email = (document.getElementById('login-email')?.value || '').trim() || prompt('登録しているメールアドレスを入力してください');
+      if (!email) break;
+      store.auth().resetPassword(email).then(() => toast('パスワード再設定のメールを送りました。届いたリンクを開いてください')).catch((err) => toast(err.message, true));
+      break;
+    }
     case 'download-vehicle-template': downloadVehicleTemplate(); break;
     case 'export-records-csv': exportRecordsCSV(); break;
     case 'export-json':
@@ -1309,22 +1331,31 @@ document.addEventListener('click', (e) => {
       break;
     case 'load-sample': {
       const has = store.getState().vehicles.length > 0;
-      if (!has || confirm('今のデータをサンプルデータで上書きします。よろしいですか?')) {
-        photos.clear();
-        store.replaceAll(buildSample());
-        toast('サンプルデータを入れました');
-        location.hash = '#/';
+      const cloud = store.mode() === 'cloud';
+      if (!has || confirm(cloud ? '共有している全員のデータをサンプルデータで置き換えます。よろしいですか?' : '今のデータをサンプルデータで上書きします。よろしいですか?')) {
+        toast('入れています…');
+        (async () => {
+          await photos.clear().catch(() => {});
+          await store.replaceAll(buildSample());
+          toast('サンプルデータを入れました');
+          location.hash = '#/';
+        })();
       }
       break;
     }
-    case 'clear-all':
-      if (confirm('このブラウザに保存した車両・整備記録・設定をすべて削除します。元に戻せません。')) {
-        photos.clear();
-        store.clearAll();
-        toast('すべて削除しました');
-        location.hash = '#/';
+    case 'clear-all': {
+      const cloud = store.mode() === 'cloud';
+      if (confirm(cloud ? '共有している車両・整備記録・写真・設定をすべて削除します。全員の画面から消え、元に戻せません。' : 'このブラウザに保存した車両・整備記録・設定をすべて削除します。元に戻せません。')) {
+        toast('削除しています…');
+        (async () => {
+          await photos.clear().catch(() => {});
+          await store.clearAll();
+          toast('すべて削除しました');
+          location.hash = '#/';
+        })();
       }
       break;
+    }
     case 'remove-base': {
       const s = store.getState().settings;
       if (s.bases.length <= 1) { toast('チームは 1 つ以上必要です', true); break; }
@@ -1397,13 +1428,14 @@ document.addEventListener('change', (e) => {
     const file = el.files?.[0];
     if (!file) return;
     file.text().then((t) => {
-      if (!confirm('今のデータをバックアップの内容で上書きします。よろしいですか?')) return;
+      if (!confirm(store.mode() === 'cloud' ? '共有している全員のデータをバックアップの内容で置き換えます。よろしいですか?' : '今のデータをバックアップの内容で上書きします。よろしいですか?')) return;
       (async () => {
         try {
           const raw = JSON.parse(t);
+          toast('読み込んでいます…');
           await photos.clear();
           await photos.importAll(raw.photos);
-          store.importJSON(t);
+          await store.importJSON(t);
           toast('バックアップを読み込みました');
           location.hash = '#/';
         } catch (err) {
@@ -1415,9 +1447,139 @@ document.addEventListener('change', (e) => {
   }
 });
 
-window.addEventListener('hashchange', render);
-store.subscribe(render);
-photos.init().catch(() => {}).then(render);
+window.addEventListener('hashchange', () => { if (ready) render(); });
+store.subscribe((s) => {
+  if (!ready) return;
+  render();
+  if (store.mode() === 'cloud') photos.ensure(L.collectPhotoIds(s)).catch(() => {});
+});
+store.onError((msg) => toast(msg, true));
+photos.setOnLoaded(() => { if (ready) render(); });
+
+// ---- 起動・ログイン ----
+
+let ready = false;
+
+function updateFooter() {
+  const $f = document.getElementById('sidebar-footer');
+  if (!$f) return;
+  if (store.mode() === 'cloud') {
+    const email = store.auth()?.userEmail() || '';
+    $f.innerHTML = `<div>保存先: クラウド(共有)</div><div class="footer-user" title="${esc(email)}">${esc(email)}</div><button type="button" class="btn ghost small" data-action="sign-out">ログアウト</button>`;
+  } else {
+    $f.textContent = '保存先: このブラウザ(ローカル)';
+  }
+}
+
+function showAuthScreen(html) {
+  document.body.classList.add('auth');
+  $app.innerHTML = `<div class="login-wrap"><div class="card login-card">${html}</div></div>`;
+  const first = $app.querySelector('input');
+  if (first) first.focus();
+}
+
+function renderLogin(message = '') {
+  showAuthScreen(`
+    <div class="login-brand"><img src="icons/icon.svg" alt=""><div><strong>車両管理</strong><small>ログインして共有データを開く</small></div></div>
+    ${message ? `<div class="form-errors" style="margin-bottom:12px"><ul><li>${esc(message)}</li></ul></div>` : ''}
+    <form id="login-form" class="stack">
+      <div class="field required"><label for="login-email">メールアドレス</label><input type="email" id="login-email" name="email" autocomplete="username" required></div>
+      <div class="field required"><label for="login-password">パスワード</label><input type="password" id="login-password" name="password" autocomplete="current-password" required></div>
+      <div class="form-errors hidden"></div>
+      <button class="btn primary" type="submit" style="justify-content:center">ログイン</button>
+      <button class="btn ghost small" type="button" data-action="forgot-password" style="justify-content:center">パスワードを忘れた</button>
+    </form>
+    <p class="muted" style="font-size:12px;margin-top:14px;line-height:1.6">利用者の追加は管理者が行います。ログインできないときは管理者に連絡してください。</p>`);
+}
+
+function renderOffline() {
+  showAuthScreen(`
+    <div class="login-brand"><img src="icons/icon.svg" alt=""><div><strong>車両管理</strong><small>通信できません</small></div></div>
+    <p style="margin:8px 0 16px;line-height:1.7">サーバーにつながりませんでした。電波の状態を確認して、もう一度開いてください。</p>
+    <button class="btn primary" type="button" data-action="reload-page" style="justify-content:center">もう一度試す</button>`);
+}
+
+function renderFatal(err) {
+  showAuthScreen(`
+    <div class="login-brand"><img src="icons/icon.svg" alt=""><div><strong>車両管理</strong><small>読み込みに失敗しました</small></div></div>
+    <p style="margin:8px 0 16px;line-height:1.7">${esc(err?.message || String(err))}</p>
+    <p class="muted" style="font-size:12px;line-height:1.6">設定(js/config.js)の URL とキー、Supabase 側のテーブル(supabase/schema.sql)を確認してください。</p>
+    <button class="btn primary" type="button" data-action="reload-page" style="justify-content:center;margin-top:14px">もう一度試す</button>`);
+}
+
+async function enterApp() {
+  ready = false;
+  const status = await store.reload();
+  if (status === 'offline') return renderOffline();
+  await photos.init(store.cloudClient(), L.collectPhotoIds(store.getState()));
+  document.body.classList.remove('auth');
+  updateFooter();
+  ready = true;
+  render();
+}
+
+function openPasswordDialog(forced = false) {
+  openDialog(`
+    <form>
+      <div class="dlg-head"><h2>${forced ? '新しいパスワードを設定' : 'パスワードを変更'}</h2>${forced ? '' : '<button type="button" class="btn ghost" data-dlg="cancel">閉じる</button>'}</div>
+      <div class="dlg-body">
+        ${forced ? '<p style="margin-bottom:12px">メールのリンクから開きました。新しいパスワードを決めてください。</p>' : ''}
+        <div class="form-grid">
+          ${field('password', '新しいパスワード(6 文字以上)', '<input type="password" id="f-password" name="password" minlength="6" autocomplete="new-password" required>', { required: true, full: true })}
+          ${field('password2', '確認のためもう一度', '<input type="password" id="f-password2" name="password2" minlength="6" autocomplete="new-password" required>', { required: true, full: true })}
+        </div>
+        <div class="form-errors hidden"></div>
+      </div>
+      <div class="dlg-foot"><div class="right-group"><button class="btn primary" type="submit">保存</button></div></div>
+    </form>`, async (data) => {
+    if (data.password !== data.password2) return ['パスワードが一致しません'];
+    await store.auth().updatePassword(data.password);
+    toast('パスワードを変更しました');
+    if (forced) { history.replaceState(null, '', location.pathname); enterApp(); }
+  });
+}
+
+async function boot() {
+  try {
+    const status = await store.init();
+    if (store.mode() === 'cloud') {
+      store.auth().onChange((event) => {
+        if (event === 'SIGNED_OUT') { ready = false; renderLogin(); }
+        else if (event === 'PASSWORD_RECOVERY') openPasswordDialog(true);
+      });
+    }
+    if (status === 'needs-auth') return renderLogin();
+    if (status === 'offline') return renderOffline();
+    await photos.init(store.cloudClient(), L.collectPhotoIds(store.getState()));
+    document.body.classList.remove('auth');
+    updateFooter();
+    ready = true;
+    render();
+  } catch (err) {
+    renderFatal(err);
+  }
+}
+
+document.addEventListener('submit', async (e) => {
+  const form = e.target;
+  if (form.id !== 'login-form') return;
+  e.preventDefault();
+  const btn = form.querySelector('button[type=submit]');
+  const box = form.querySelector('.form-errors');
+  const fd = new FormData(form);
+  btn.disabled = true;
+  box.classList.add('hidden');
+  try {
+    await store.auth().signIn(String(fd.get('email')).trim(), String(fd.get('password')));
+    await enterApp();
+  } catch (err) {
+    box.innerHTML = `<ul><li>${esc(err.message || 'ログインできませんでした')}</li></ul>`;
+    box.classList.remove('hidden');
+    btn.disabled = false;
+  }
+});
+
+boot();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

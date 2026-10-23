@@ -204,7 +204,7 @@ td .secondary { color: var(--muted); font-size: 12px; }
 .toolbar .spacer { flex: 1; }
 .toolbar .count { color: var(--muted); font-size: 12.5px; }
 
-input[type="text"], input[type="search"], input[type="number"], input[type="date"], input[type="month"], select, textarea {
+input[type="text"], input[type="search"], input[type="number"], input[type="date"], input[type="month"], input[type="email"], input[type="password"], select, textarea {
   padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); min-width: 0; width: 100%;
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
@@ -562,3 +562,16 @@ dialog.lightbox img { max-width: calc(100vw - 56px); max-height: calc(100vh - 12
 .accident-grid .v { font-size: 13px; font-weight: 600; white-space: pre-wrap; }
 .pin.accident .pin-body { stroke: #ffd54a; }
 @media (max-width: 860px) { .accident-form, .accident-grid { grid-template-columns: 1fr; } }
+
+/* ---- ログイン画面・共有モード ---- */
+body.auth #sidebar, body.auth #tabbar { display: none !important; }
+body.auth #layout { grid-template-columns: 1fr; }
+.login-wrap { min-height: calc(100vh - 84px); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.login-card { width: min(400px, 100%); padding: 26px 24px; }
+.login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.login-brand img { width: 40px; height: 40px; border-radius: 10px; }
+.login-brand strong { font-size: 17px; display: block; }
+.login-brand small { color: var(--muted); font-size: 12px; }
+.login-card .stack { display: flex; flex-direction: column; gap: 12px; }
+.login-card input { width: 100%; }
+#sidebar-footer .footer-user { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 2px 0 6px; color: var(--text-2); }

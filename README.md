@@ -1,7 +1,7 @@
 # 車両管理
 
 配送会社向けの、車両台帳と整備記録を管理する Web アプリ(PWA)です。
-サーバー不要で、ブラウザだけで動きます。データは今のところブラウザ内(localStorage)に保存します。
+サーバー不要で、ブラウザだけで動きます。データの保存先は 2 通りで、`js/config.js` が空ならブラウザ内(localStorage)、Supabase の URL とキーを入れるとクラウド(ログインした人全員で共有、変更は即時反映)になります。
 
 ## できること
 
@@ -29,23 +29,36 @@ python3 -m http.server 8080
 
 最初は空なので、設定 →「サンプルデータを入れる」で 24 台分のデータを入れると全画面を試せます。実運用の手順(初期設定、CSV での一括登録、日々の入力、週 1 回のバックアップ)は docs/運用手順.md にあります。
 
+### 複数人で共有する(クラウド版)
+
+1. Supabase でプロジェクトを作り、SQL Editor で `supabase/schema.sql` を Run する
+2. Authentication → Users で使う人を追加し、Sign up は OFF にする
+3. `js/config.js` に Project URL と publishable key を貼る
+4. GitHub Pages などに置く(ビルド不要、フォルダをそのまま)
+
+手順の詳細は docs/運用手順.md の 7 章。ログインした人は全員が同じデータを読み書きし、未ログインは何も見えません(RLS)。写真は Storage のバケット photos に入ります。
+
 ## 構成
 
 ```
 index.html            画面の骨組みとナビ
 css/style.css         見た目(PC 優先、スマホは下タブ)
 js/logic.js           期限判定・集計・検証・CSV などの純粋関数(テスト対象)
-js/store.js           保存層。いまは localStorage。将来 Supabase に差し替える想定
+js/store.js           保存層。メモリ上の state を先に更新して画面に通知し、後ろで backend に書く
+js/backend-local.js   backend: localStorage(config.js が空のとき)
+js/backend-supabase.js backend: Supabase(認証・jsonb の 4 テーブル・Realtime)
+js/config.js          Supabase の URL と publishable key(空ならローカル)
+supabase/schema.sql   テーブル・RLS・権限・Realtime・写真バケットの定義(SQL Editor で 1 回 Run)
 js/sample.js          固定シードのサンプルデータ
 js/views2d.js         車体の 5 面図(img/ の図面画像 + 透明な部位の領域)
 js/regions2d.js       部位の領域(画像ピクセル座標)
 img/                  図面画像(reference/ から切り出し)
-js/photos.js          写真の縮小と IndexedDB 保存。起動時に読み込み、url(id) で参照
+js/photos.js          写真の縮小と保存(ローカル: IndexedDB / クラウド: Storage + 署名付き URL)。url(id) で参照
 js/app.js             画面の描画とイベント(ハッシュルーティング、<dialog> フォーム)
 sw.js                 オフライン用の最小キャッシュ
 tests/logic.test.mjs  node --test
 起動.command          ダブルクリックでサーバー起動 + ブラウザで開く
-docs/運用手順.md      個人運用の手順
+docs/運用手順.md      運用手順(1〜6 ローカル版、7 共有版)
 ```
 
 ## テスト
@@ -75,7 +88,6 @@ settings = { alertDays, warnDays, odometerWarnKm, bases: [], types: [], companyN
 
 ## 今後
 
-- Supabase に保存先を切り替え、複数人・複数端末で共有(ログイン、拠点ごとの権限)
-- GitHub Pages で公開
+- 拠点(チーム)ごとの権限、閲覧だけの利用者
 - ドライバー用のスマホ入力(日常点検、給油、走行距離)
 - 車検証・保険証券の画像添付、書類の期限リマインド通知

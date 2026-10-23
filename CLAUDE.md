@@ -5,7 +5,7 @@
 ## 方針
 - フレームワークやビルドツールは使わない
 - 計算は js/logic.js の純粋関数に寄せ、node --test tests/*.test.mjs でテストする。画面(app.js)は HTML を組んでイベントを捌くだけ
-- 保存は js/store.js を通す。画面から localStorage を直接触らない(将来 Supabase に差し替えるため)
+- 保存は js/store.js を通す。画面から localStorage や Supabase を直接触らない。store の下に backend が 2 つ(js/backend-local.js / js/backend-supabase.js)あり、js/config.js の有無で切り替わる。テーブル定義は supabase/schema.sql
 - UI 文言は日本語。利用者は事務所の管理者(PC)なので、テーブルと一覧性を優先し、スマホは崩れなければよい
 - 既存データの形を変えるときは store.js の normalize() で古い形を読めるようにする
 
@@ -14,7 +14,7 @@
 
 ## 続きを始めるとき
 - まず docs/進捗.md を読む(いまの状態、やりかけの作業、次の候補)
-- 本人向けの使い方は docs/運用手順.md(個人運用版)。画面の文言を変えたらここも合わせる
+- 本人向けの使い方は docs/運用手順.md(1〜6 ローカル版、7 共有版)。画面の文言を変えたらここも合わせる
 - 車体の図の元は reference/(図面 4 枚)。img/ は tools/clean_blueprints.py で生成
 
 ## 確認の仕方

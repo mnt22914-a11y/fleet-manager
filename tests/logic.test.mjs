@@ -232,3 +232,56 @@ test('backupDue: 未実施か 7 日以上前なら促す。車両がなければ
   assert.equal(L.backupDue(null, 0, T), false);
   assert.equal(L.daysSinceBackup('2026-10-15', T), 3);
 });
+
+// ---- 共有(クラウド同期) ----
+
+test('upsertById / removeById: 置き換え・追加・削除。元の配列は変えない', () => {
+  const list = [{ id: 'a', n: 1 }, { id: 'b', n: 2 }];
+  const up = L.upsertById(list, { id: 'a', n: 9 });
+  assert.deepEqual(up, [{ id: 'a', n: 9 }, { id: 'b', n: 2 }]);
+  assert.deepEqual(list[0], { id: 'a', n: 1 });
+  assert.equal(L.upsertById(list, { id: 'c', n: 3 }).length, 3);
+  assert.deepEqual(L.removeById(list, 'b'), [{ id: 'a', n: 1 }]);
+});
+
+test('applyRemoteChange: 追加・更新・削除を反映し、変化なしなら同じ state を返す', () => {
+  const s0 = { vehicles: [{ id: 'v1', driverName: '佐藤', updatedAt: '2026-10-23T01:00:00Z' }], records: [], issues: [], settings: { ...L.DEFAULT_SETTINGS } };
+  const s1 = L.applyRemoteChange(s0, { table: 'vehicles', type: 'INSERT', id: 'v2', data: { id: 'v2', driverName: '鈴木', updatedAt: '2026-10-23T02:00:00Z' } });
+  assert.equal(s1.vehicles.length, 2);
+  assert.equal(s0.vehicles.length, 1);
+  const s2 = L.applyRemoteChange(s1, { table: 'vehicles', type: 'UPDATE', id: 'v1', data: { id: 'v1', driverName: '佐藤 改', updatedAt: '2026-10-23T03:00:00Z' } });
+  assert.equal(s2.vehicles.find((v) => v.id === 'v1').driverName, '佐藤 改');
+  const s3 = L.applyRemoteChange(s2, { table: 'vehicles', type: 'DELETE', id: 'v2', data: null });
+  assert.equal(s3.vehicles.length, 1);
+  assert.equal(L.applyRemoteChange(s3, { table: 'vehicles', type: 'DELETE', id: 'zzz', data: null }), s3);
+  assert.equal(L.applyRemoteChange(s3, { table: 'vehicles', type: 'UPDATE', id: 'v1', data: s3.vehicles[0] }), s3);
+  assert.equal(L.applyRemoteChange(s3, { table: 'nope', type: 'UPDATE', id: 'x', data: {} }), s3);
+});
+
+test('applyRemoteChange: 自分が後から書いた行は古い通知で上書きしない', () => {
+  const s0 = { vehicles: [{ id: 'v1', driverName: '新しい', updatedAt: '2026-10-23T05:00:00Z' }], records: [], issues: [], settings: {} };
+  const s1 = L.applyRemoteChange(s0, { table: 'vehicles', type: 'UPDATE', id: 'v1', data: { id: 'v1', driverName: '古い', updatedAt: '2026-10-23T04:00:00Z' } });
+  assert.equal(s1, s0);
+});
+
+test('applyRemoteChange: 設定は既定値に重ねる。削除なら既定値に戻る', () => {
+  const s0 = { vehicles: [], records: [], issues: [], settings: { ...L.DEFAULT_SETTINGS, alertDays: 10 } };
+  const s1 = L.applyRemoteChange(s0, { table: 'settings', type: 'UPDATE', id: 'default', data: { alertDays: 20, companyName: 'テスト運輸' } });
+  assert.equal(s1.settings.alertDays, 20);
+  assert.equal(s1.settings.companyName, 'テスト運輸');
+  assert.deepEqual(s1.settings.bases, L.DEFAULT_SETTINGS.bases);
+  const s2 = L.applyRemoteChange(s1, { table: 'settings', type: 'DELETE', id: 'default', data: null });
+  assert.equal(s2.settings.alertDays, L.DEFAULT_SETTINGS.alertDays);
+});
+
+test('collectPhotoIds: 整備記録と異常の写真 ID を重複なしで集める', () => {
+  const s = { records: [{ id: 'r1', photos: ['p1', 'p2'] }, { id: 'r2' }], issues: [{ id: 'i1', photos: ['p2', 'p3'] }] };
+  assert.deepEqual(L.collectPhotoIds(s).sort(), ['p1', 'p2', 'p3']);
+  assert.deepEqual(L.collectPhotoIds({}), []);
+});
+
+test('jaAuthError: 既知のエラーは日本語、未知はそのまま', () => {
+  assert.equal(L.jaAuthError({ message: 'Invalid login credentials' }).message, 'メールアドレスかパスワードが違います');
+  assert.equal(L.jaAuthError(new Error('TypeError: Failed to fetch')).message, '通信できませんでした。電波の状態を確認してください');
+  assert.equal(L.jaAuthError({ message: 'something else' }).message, 'something else');
+});
