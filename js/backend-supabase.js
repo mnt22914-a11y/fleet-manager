@@ -125,8 +125,9 @@ export async function createSupabaseBackend(url, anonKey) {
 
     // 誰かがデータを変えたら呼ばれる。callback({ table, type: 'INSERT'|'UPDATE'|'DELETE', id, data })
     onChange(callback) {
-      if (channel) { sb.removeChannel(channel); channel = null; }
-      channel = sb.channel('fleet-changes');
+      // 同じ名前だと古いチャンネルが返ってくるので、毎回別の名前にして古いほうは外す
+      if (channel) { const old = channel; channel = null; sb.removeChannel(old).catch(() => {}); }
+      channel = sb.channel(`fleet-changes-${Date.now()}`);
       for (const table of [...TABLES, 'settings']) {
         channel.on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
           const row = payload.new?.id ? payload.new : payload.old;
