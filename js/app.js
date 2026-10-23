@@ -80,6 +80,50 @@ function parseRoute() {
   return { name: 'home' };
 }
 
+const isTouchDevice = () => matchMedia('(hover: none), (max-width: 860px)').matches;
+
+// #app の中の入力欄にフォーカスがある間(検索の入力中など)は、他端末の変更で画面を作り直さず、抜けてから反映する
+let deferredRender = false;
+function typingInApp() {
+  const el = document.activeElement;
+  return !!el && $app.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+}
+let deferTimer = null;
+function deferRender() {
+  deferredRender = true;
+  if (deferTimer) return;
+  deferTimer = setInterval(() => {
+    if (typingInApp()) return;
+    clearInterval(deferTimer); deferTimer = null;
+    if (deferredRender) { deferredRender = false; render(); }
+  }, 400);
+}
+
+function pageHTML(route, state, today, alerts) {
+  switch (route.name) {
+    case 'vehicles': return renderVehicles(state, today);
+    case 'vehicle': return renderVehicleDetail(state, route.id, today);
+    case 'maintenance': return renderMaintenance(state, today);
+    case 'settings': return renderSettings(state);
+    default: return renderHome(state, alerts, today);
+  }
+}
+
+/** 検索・絞り込みの入力中に呼ぶ。入力欄はそのままに、結果の部分(data-results と件数)だけ差し替える。 */
+function renderResultsOnly() {
+  const route = parseRoute();
+  const state = store.getState();
+  const today = L.todayISO();
+  const tmp = document.createElement('div');
+  tmp.innerHTML = pageHTML(route, state, today, L.allAlerts(state.vehicles, state.records, state.settings, today));
+  let replaced = false;
+  for (const sel of ['[data-results]', '.toolbar .count']) {
+    const cur = $app.querySelector(sel), next = tmp.querySelector(sel);
+    if (cur && next) { cur.replaceWith(next); replaced = true; }
+  }
+  if (!replaced) render();
+}
+
 function render() {
   const route = parseRoute();
   const state = store.getState();
@@ -95,14 +139,7 @@ function render() {
   $count.classList.toggle('hidden', urgent === 0);
   document.getElementById('brand-company').textContent = state.settings.companyName || '配送車両の台帳と整備記録';
 
-  let html = '';
-  switch (route.name) {
-    case 'vehicles': html = renderVehicles(state, today); break;
-    case 'vehicle': html = renderVehicleDetail(state, route.id, today); break;
-    case 'maintenance': html = renderMaintenance(state, today); break;
-    case 'settings': html = renderSettings(state); break;
-    default: html = renderHome(state, alerts, today);
-  }
+  const html = pageHTML(route, state, today, alerts);
   $app.innerHTML = html;
   $app.scrollTop = 0;
   if (route.name === 'settings' && store.mode() === 'cloud') fillAccountCard();
@@ -291,7 +328,7 @@ function renderVehicles(state, today) {
           <button type="button" class="seg-btn ${u.view === 'table' ? 'on' : ''}" data-action="set-view" data-view="table" title="一覧表">一覧表</button>
         </div>
       </div>
-      ${rows.length === 0 ? `<div class="empty"><strong>該当する車両がありません</strong>${vehicles.length === 0 ? '「＋ 車両を追加」から登録してください。' : '検索条件を変えてみてください。'}</div>` : u.view === 'lot' ? renderLot(rows, issueStatus, alertsByVehicle, settings) : `
+      <div data-results>${rows.length === 0 ? `<div class="empty"><strong>該当する車両がありません</strong>${vehicles.length === 0 ? '「＋ 車両を追加」から登録してください。' : '検索条件を変えてみてください。'}</div>` : u.view === 'lot' ? renderLot(rows, issueStatus, alertsByVehicle, settings) : `
       <div class="table-wrap"><table>
         <thead><tr>
           ${th('driverName', 'ドライバー')}
@@ -319,7 +356,7 @@ function renderVehicles(state, today) {
             <td>${v.status === 'retired' ? '<span class="muted">—</span>' : badgeLevel(v._level)}</td>
           </tr>`).join('')}
         </tbody>
-      </table></div>`}
+      </table></div>`}</div>
     </div>`;
 }
 
@@ -633,11 +670,11 @@ function renderMaintenance(state, today) {
         <span class="spacer"></span>
         <span class="count">${rows.length} 件 ・ 合計 <strong class="num">${L.fmtYen(total)}</strong></span>
       </div>
-      ${rows.length === 0 ? `<div class="empty"><strong>該当する記録がありません</strong>${records.length === 0 ? '「＋ 整備を記録」から追加してください。' : '絞り込み条件を変えてみてください。'}</div>` : `
+      <div data-results>${rows.length === 0 ? `<div class="empty"><strong>該当する記録がありません</strong>${records.length === 0 ? '「＋ 整備を記録」から追加してください。' : '絞り込み条件を変えてみてください。'}</div>` : `
       <div class="table-wrap"><table>
         <thead><tr><th>実施日</th><th>車両</th><th>種別</th><th>内容</th><th>業者</th><th class="right">走行距離</th><th class="right">費用</th><th>次回目安</th><th></th></tr></thead>
         <tbody>${rows.map((r) => recordRow(r, byId.get(r.vehicleId) || {})).join('')}</tbody>
-      </table></div>`}
+      </table></div>`}</div>
     </div>`;
 }
 
@@ -749,8 +786,10 @@ function openDialog(html, onSubmit, onAction) {
   });
   dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
   dlg.showModal();
-  const first = form.querySelector('input:not([type=hidden]), select');
-  if (first) first.focus();
+  if (!isTouchDevice()) {
+    const first = form.querySelector('input:not([type=hidden]), select');
+    if (first) first.focus();
+  }
   return { dlg, form, close };
 }
 
@@ -1128,7 +1167,7 @@ function photoFieldHTML(ids = []) {
       ${ids.filter((id) => photos.has(id)).map((id) => `<div class="photo-thumb" data-photo-id="${esc(id)}"><img src="${photos.url(id)}" alt=""><button type="button" class="photo-x" data-photo-remove="${esc(id)}" title="外す">×</button></div>`).join('')}
       <label class="photo-add" title="写真を追加"><input type="file" accept="image/*" multiple hidden data-photo-input><span>＋</span><small>写真を追加</small></label>
     </div>
-    <div class="hint">長辺 1280px に縮小して、このブラウザに保存します。スマホならカメラでそのまま撮れます</div>
+    <div class="hint">長辺 1280px に縮小して${store.mode() === 'cloud' ? 'クラウドに' : 'このブラウザに'}保存します。スマホならカメラでそのまま撮れます</div>
   </div>`;
 }
 
@@ -1439,12 +1478,8 @@ document.addEventListener('submit', (e) => {
 function applyFilter(el) {
   const [page, key] = el.dataset.filter.split('.');
   ui[page][key] = el.type === 'checkbox' ? el.checked : el.value;
-  render();
-  // 検索欄はフォーカスを維持する
-  if (el.type === 'search') {
-    const again = $app.querySelector(`[data-filter="${el.dataset.filter}"]`);
-    if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
-  }
+  // 入力欄そのものは作り直さない(スマホでキーボードが閉じたり、カーソルが飛んだりしないように)
+  renderResultsOnly();
 }
 document.addEventListener('input', (e) => {
   const el = e.target;
@@ -1498,7 +1533,7 @@ document.addEventListener('change', (e) => {
 window.addEventListener('hashchange', () => { if (ready) render(); });
 store.subscribe((s) => {
   if (!ready) return;
-  render();
+  if (typingInApp()) deferRender(); else render();
   if (store.mode() === 'cloud') photos.ensure(L.collectPhotoIds(s)).catch(() => {});
 });
 store.onError((msg) => toast(msg, true));

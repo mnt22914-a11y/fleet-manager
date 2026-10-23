@@ -343,9 +343,9 @@ dialog form { display: flex; flex-direction: column; max-height: calc(100vh - 48
 @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 /* 図面画像の上の領域: ふだんは透明、異常は赤、選択は青枠 */
 .view-img .part .shape { fill: rgba(31, 78, 121, 0); stroke: none; transition: fill 0.15s; }
-.view-img .part:hover .shape { fill: rgba(31, 78, 121, 0.18); stroke: var(--accent); stroke-width: 2; }
+@media (hover: hover) { .view-img .part:hover .shape { fill: rgba(31, 78, 121, 0.18); stroke: var(--accent); stroke-width: 2; }
 .view-img .part.has-issue .shape { fill: rgba(224, 53, 43, 0.42); stroke: var(--critical); stroke-width: 2.5; }
-.view-img .part.has-issue:hover .shape { fill: rgba(224, 53, 43, 0.55); }
+.view-img .part.has-issue:hover .shape { fill: rgba(224, 53, 43, 0.55); } }
 .view-img .part.selected .shape { stroke: var(--accent); stroke-width: 5; fill: rgba(31, 78, 121, 0.16); }
 .view-img .part.selected.has-issue .shape { fill: rgba(224, 53, 43, 0.42); }
 .view-img .marker .ring { stroke-width: 3; }
@@ -581,3 +581,41 @@ body.auth #layout { grid-template-columns: 1fr; }
 .members-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .members-table td { padding: 6px 4px; border-bottom: 1px solid var(--border); }
 .members-table tr:last-child td { border-bottom: 0; }
+
+/* ---- スマホ(タッチ)向けの入力まわり ---- */
+/* ダイアログが開いている間は後ろの画面をスクロールさせない */
+body:has(dialog[open]:not(.lightbox)) { overflow: hidden; }
+dialog { max-height: calc(100dvh - 48px); }
+dialog form { max-height: calc(100dvh - 48px); }
+input[type="search"] { -webkit-appearance: none; appearance: none; }
+.pick-wrap { touch-action: manipulation; }
+@media (max-width: 860px) {
+  /* iOS は 16px 未満の入力欄にフォーカスすると画面を拡大してしまうので 16px にする */
+  input, select, textarea { font-size: 16px; }
+  .btn { font-size: 14px; }
+  /* ダイアログは下から出るシートにして、ボタンが画面の外に出ないようにする */
+  dialog {
+    width: 100vw; max-width: 100vw; margin: auto 0 0;
+    border-radius: 16px 16px 0 0;
+    max-height: calc(100dvh - 24px);
+  }
+  dialog form { max-height: calc(100dvh - 24px); }
+  .dlg-head { padding: 14px 16px; }
+  .dlg-body { padding: 14px 16px; }
+  .dlg-foot { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); position: sticky; bottom: 0; background: var(--surface); }
+  .dlg-foot .btn { padding: 11px 16px; }
+  .pick-wrap { max-height: none; }
+  .pick-wrap svg { max-height: 60vh; }
+  .seg-item { padding: 11px 6px; }
+  .photo-thumb, .photo-add { width: 96px; height: 96px; }
+  .settings-row { grid-template-columns: 1fr; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .chips { flex-wrap: wrap; }
+  .add-row { display: flex; gap: 6px; }
+  .add-row input { flex: 1; min-width: 0; }
+  .settings-row > input, .settings-row > div[style] { justify-self: start; }
+  #tabbar a { padding: 6px 0; }
+}
+@media (max-width: 860px) and (prefers-color-scheme: dark) {
+  .dlg-foot { background: var(--surface); }
+}

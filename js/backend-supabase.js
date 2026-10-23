@@ -44,7 +44,11 @@ export async function createSupabaseBackend(url, anonKey) {
 
   async function isMember() {
     const { data, error } = await sb.rpc('is_member');
-    if (error) throw jaAuthError(error);
+    if (error) {
+      // 02_signup.sql をまだ Run していない(関数が無い)ときは、以前どおり「ログイン済み = 使える」
+      if (/is_member|PGRST202|42883/.test(`${error.code} ${error.message}`)) return true;
+      throw jaAuthError(error);
+    }
     return data === true;
   }
 
