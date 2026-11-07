@@ -43,11 +43,14 @@ export async function createSupabaseBackend(url, anonKey) {
     }
   }
 
+  // 関数が無い(SQL をまだ Run していない)エラーか
+  const missingFn = (error, name) => new RegExp(`${name}|PGRST202|42883`).test(`${error.code} ${error.message}`);
+
   async function isMember() {
     const { data, error } = await sb.rpc('is_member');
     if (error) {
       // 02_signup.sql をまだ Run していない(関数が無い)ときは、以前どおり「ログイン済み = 使える」
-      if (/is_member|PGRST202|42883/.test(`${error.code} ${error.message}`)) return true;
+      if (missingFn(error, 'is_member')) return true;
       throw jaAuthError(error);
     }
     return data === true;
@@ -75,9 +78,15 @@ export async function createSupabaseBackend(url, anonKey) {
       return rows[0] || null;
     },
     async members() {
-      return check(await sb.from('members').select('user_id,email,created_at').order('created_at'));
+      const r = await sb.from('members').select('user_id,email,name,created_at').order('created_at');
+      // 03_invite_link.sql 前は name 列が無い
+      if (r.error && /name/.test(r.error.message || '')) return check(await sb.from('members').select('user_id,email,created_at').order('created_at'));
+      return check(r);
     },
     async removeMember(userId) {
+      const { error } = await sb.rpc('remove_member', { p_user: userId });
+      if (!error) return;
+      if (!missingFn(error, 'remove_member')) throw jaAuthError(error);
       check(await sb.from('members').delete().eq('user_id', userId));
     },
     async regenerateInviteCode() {
@@ -139,6 +148,28 @@ export async function createSupabaseBackend(url, anonKey) {
 
     auth: {
       userEmail() { return user?.email || ''; },
+      /** 画面に出す名前(招待リンクで入った人は名前、メールで入った人はメール) */
+      displayName() { return user?.user_metadata?.name || user?.email || ''; },
+      /** 招待リンクで入った人(メール・パスワードが無いので、ログアウトすると戻れない) */
+      isAnonymous() { return !!user?.is_anonymous; },
+      /** 招待リンクから参加: まだログインしていなければ匿名でログインし、名前と招待コードでメンバーになる。 */
+      async joinWithInvite(inviteCode, name) {
+        const code = String(inviteCode || '').trim();
+        name = String(name || '').trim();
+        if (!name) throw new Error('名前を入れてください');
+        if (!user) {
+          const data = check(await sb.auth.signInAnonymously({ options: { data: { name } } }));
+          user = data.user;
+          keepStorage();
+        } else if (user.is_anonymous && user.user_metadata?.name !== name) {
+          const data = check(await sb.auth.updateUser({ data: { name } }));
+          user = data.user;
+        }
+        const { error } = await sb.rpc('join_with_invite', { p_code: code, p_name: name });
+        if (!error) return;
+        if (!missingFn(error, 'join_with_invite')) throw jaAuthError(error);
+        await this.join(code);
+      },
       async signIn(email, password) {
         const data = check(await sb.auth.signInWithPassword({ email, password }));
         user = data.user;

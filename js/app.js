@@ -154,15 +154,25 @@ async function fillAccountCard() {
   try {
     const [company, members] = await Promise.all([c.company(), c.members()]);
     const code = company?.invite_code || '';
+    const link = inviteLink(code);
     $code.className = '';
-    $code.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><code class="invite-code">${esc(code)}</code><button class="btn small" data-action="copy-invite" data-code="${esc(code)}">コピー</button><button class="btn small ghost" data-action="regenerate-invite">作り直す</button></div>`;
+    $code.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><code class="invite-code" style="word-break:break-all">${esc(link)}</code><button class="btn small primary" data-action="share-invite" data-link="${esc(link)}">LINE で送る</button><button class="btn small" data-action="copy-invite" data-link="${esc(link)}">コピー</button><button class="btn small ghost" data-action="regenerate-invite">作り直す</button></div>`;
     const me = store.auth()?.userId();
     $members.className = '';
-    $members.innerHTML = `<table class="members-table"><tbody>${members.map((m) => `<tr><td>${esc(m.email || '(メールなし)')}${m.user_id === me ? ' <span class="muted">(自分)</span>' : ''}</td><td class="muted nowrap">${esc(L.fmtDate(String(m.created_at || '').slice(0, 10)))} から</td><td class="right">${m.user_id === me ? '' : `<button class="btn small danger" data-action="remove-member" data-id="${esc(m.user_id)}" data-email="${esc(m.email || '')}">外す</button>`}</td></tr>`).join('')}</tbody></table>`;
+    $members.innerHTML = `<table class="members-table"><tbody>${members.map((m) => `<tr><td>${esc(m.name || m.email || '(名前なし)')}${m.user_id === me ? ' <span class="muted">(自分)</span>' : ''}</td><td class="muted nowrap">${esc(L.fmtDate(String(m.created_at || '').slice(0, 10)))} から</td><td class="right">${m.user_id === me ? '' : `<button class="btn small danger" data-action="remove-member" data-id="${esc(m.user_id)}" data-name="${esc(m.name || m.email || '')}">外す</button>`}</td></tr>`).join('')}</tbody></table>`;
   } catch (err) {
     $code.textContent = err.message || '取得できませんでした';
     $members.textContent = '';
   }
+}
+
+// 招待リンク(開くと名前を入れるだけで参加できる)
+function inviteLink(code) {
+  return `${location.origin}${location.pathname}?invite=${encodeURIComponent(code)}`;
+}
+
+function inviteMessage(link) {
+  return `車両管理アプリの招待です。\nこのリンクを開いて、名前を入れて「参加する」を押してください(メール登録は不要です)。\n${link}\n開いたあと、ホーム画面に追加しておくとアプリのように使えます。`;
 }
 
 // ---- ダッシュボード ----
@@ -687,10 +697,10 @@ function renderSettings(state) {
         <div class="card">
           <div class="card-head"><h2>アカウント</h2></div>
           <div class="card-body">
-            <div class="settings-row"><div><div>ログイン中</div><div class="desc">${esc(store.auth()?.userEmail() || '')}</div></div><button class="btn small" data-action="sign-out">ログアウト</button></div>
-            <div class="settings-row"><div><div>パスワードを変更</div><div class="desc">このアカウントのパスワードを変えます</div></div><button class="btn small" data-action="change-password">変更</button></div>
-            <div class="settings-row"><div><div>招待コード</div><div class="desc">新しく使う人に伝えます。登録画面でこのコードを入れるとメンバーになります。漏れたら作り直してください</div></div><div id="invite-code-box" class="muted">読み込み中…</div></div>
-            <div class="settings-row" style="display:block"><div>メンバー</div><div class="desc" style="margin-bottom:8px">このデータを見られる人。外すとログインはできてもデータは見えなくなります(本人を Supabase から消すのは管理者)</div><div id="members-box" class="muted">読み込み中…</div></div>
+            <div class="settings-row"><div><div>ログイン中</div><div class="desc">${esc(store.auth()?.displayName() || '')}${store.auth()?.isAnonymous() ? '(招待リンクで参加。この端末だけで使えます)' : ''}</div></div><button class="btn small" data-action="sign-out">ログアウト</button></div>
+            ${store.auth()?.isAnonymous() ? '' : '<div class="settings-row"><div><div>パスワードを変更</div><div class="desc">このアカウントのパスワードを変えます</div></div><button class="btn small" data-action="change-password">変更</button></div>'}
+            <div class="settings-row" style="display:block"><div>招待リンク</div><div class="desc" style="margin-bottom:8px">新しく使う人に送ります。開いて名前を入れるだけで参加できます(メール・パスワードは不要)。漏れたら作り直してください(参加済みの人はそのまま使えます)</div><div id="invite-code-box" class="muted">読み込み中…</div></div>
+            <div class="settings-row" style="display:block"><div>メンバー</div><div class="desc" style="margin-bottom:8px">このデータを見られる人。外すとデータは見えなくなります。機種変更などで入り直した人の古い分も、ここで外してください</div><div id="members-box" class="muted">読み込み中…</div></div>
           </div>
         </div>` : '';
   const chips = (items, kind) => `<div class="chips">${items.map((x) => `<span class="chip">${esc(x)}<button type="button" title="削除" data-action="remove-${kind}" data-value="${esc(x)}">×</button></span>`).join('')}</div>
@@ -1375,25 +1385,31 @@ document.addEventListener('click', (e) => {
     case 'set-view': ui.vehicles.view = el.dataset.view; render(); break;
     case 'view-photo': openLightbox(el.dataset.photo); break;
     case 'export-vehicles-csv': exportVehiclesCSV(); break;
-    case 'sign-out':
-      if (confirm('ログアウトしますか?')) store.auth()?.signOut();
+    case 'sign-out': {
+      const anon = store.auth()?.isAnonymous();
+      if (confirm(anon ? 'ログアウトすると、この端末ではもう一度招待リンクから参加し直すことになります。ログアウトしますか?' : 'ログアウトしますか?')) store.auth()?.signOut();
       break;
+    }
     case 'change-password': openPasswordDialog(false); break;
-    case 'show-signup': renderSignup(); break;
     case 'show-login': renderLogin(); break;
     case 'sign-out-now': store.auth()?.signOut(); break;
     case 'copy-invite': {
-      const code = el.dataset.code || '';
-      navigator.clipboard?.writeText(code).then(() => toast('招待コードをコピーしました')).catch(() => prompt('招待コード', code));
+      const link = el.dataset.link || '';
+      navigator.clipboard?.writeText(link).then(() => toast('招待リンクをコピーしました')).catch(() => prompt('招待リンク', link));
+      break;
+    }
+    case 'share-invite': {
+      const link = el.dataset.link || '';
+      window.open(`https://line.me/R/share?text=${encodeURIComponent(inviteMessage(link))}`, '_blank', 'noopener');
       break;
     }
     case 'regenerate-invite':
-      if (confirm('招待コードを作り直します。古いコードでは登録できなくなります(すでに参加している人はそのまま使えます)。')) {
-        store.cloud().regenerateInviteCode().then(() => { toast('招待コードを作り直しました'); fillAccountCard(); }).catch((err) => toast(err.message, true));
+      if (confirm('招待リンクを作り直します。古いリンクでは参加できなくなります(すでに参加している人はそのまま使えます)。')) {
+        store.cloud().regenerateInviteCode().then(() => { toast('招待リンクを作り直しました'); fillAccountCard(); }).catch((err) => toast(err.message, true));
       }
       break;
     case 'remove-member':
-      if (confirm(`${el.dataset.email || 'この人'} をメンバーから外します。ログインはできますが、データは見えなくなります。`)) {
+      if (confirm(`${el.dataset.name || 'この人'} をメンバーから外します。データは見えなくなります(招待リンクで入った人は、その端末からもう入れません)。`)) {
         store.cloud().removeMember(id).then(() => { toast('メンバーから外しました'); fillAccountCard(); }).catch((err) => toast(err.message, true));
       }
       break;
@@ -1547,7 +1563,7 @@ function updateFooter() {
   const $f = document.getElementById('sidebar-footer');
   if (!$f) return;
   if (store.mode() === 'cloud') {
-    const email = store.auth()?.userEmail() || '';
+    const email = store.auth()?.displayName() || '';
     $f.innerHTML = `<div>保存先: クラウド(共有)</div><div class="footer-user" title="${esc(email)}">${esc(email)}</div><button type="button" class="btn ghost small" data-action="sign-out">ログアウト</button>`;
   } else {
     $f.textContent = '保存先: このブラウザ(ローカル)';
@@ -1572,27 +1588,29 @@ function renderLogin(message = '') {
       <button class="btn primary" type="submit" style="justify-content:center">ログイン</button>
       <button class="btn ghost small" type="button" data-action="forgot-password" style="justify-content:center">パスワードを忘れた</button>
     </form>
-    <div class="login-switch">初めて使う人は <button type="button" class="linklike" data-action="show-signup">新しく登録</button>(招待コードが要ります)</div>`);
+    <div class="login-switch">初めて使う人は、管理者から届いた<strong>招待リンク</strong>を開いてください(メール登録は不要です)</div>`);
 }
 
-function renderSignup(message = '') {
+// 招待リンク(?invite=コード)から開いたとき: 名前を入れるだけで参加
+function renderInvite(code, message = '') {
+  const name = store.auth()?.isAnonymous() ? store.auth().displayName() : '';
   showAuthScreen(`
-    <div class="login-brand"><img src="icons/icon.svg" alt=""><div><strong>車両管理</strong><small>新しく登録する</small></div></div>
+    <div class="login-brand"><img src="icons/icon.svg" alt=""><div><strong>車両管理</strong><small>招待されています</small></div></div>
+    <p style="margin:4px 0 14px;line-height:1.7">名前を入れて「参加する」を押すと、会社の車両台帳を使えるようになります。メールアドレスやパスワードは要りません。</p>
     ${message ? `<div class="form-errors" style="margin-bottom:12px"><ul><li>${esc(message)}</li></ul></div>` : ''}
-    <form id="signup-form" class="stack">
-      <div class="field required"><label for="signup-email">メールアドレス</label><input type="email" id="signup-email" name="email" autocomplete="username" required></div>
-      <div class="field required"><label for="signup-password">パスワード(6 文字以上)</label><input type="password" id="signup-password" name="password" minlength="6" autocomplete="new-password" required></div>
-      <div class="field required"><label for="signup-code">招待コード</label><input type="text" id="signup-code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" required><div class="hint">会社の管理者から受け取った 8 文字のコード</div></div>
+    <form id="invite-form" class="stack">
+      <input type="hidden" name="code" value="${esc(code)}">
+      <div class="field required"><label for="invite-name">名前</label><input type="text" id="invite-name" name="name" value="${esc(name)}" maxlength="40" autocomplete="name" placeholder="例: 山田 太郎" required><div class="hint">メンバー一覧に出ます</div></div>
       <div class="form-errors hidden"></div>
-      <button class="btn primary" type="submit" style="justify-content:center">登録する</button>
+      <button class="btn primary" type="submit" style="justify-content:center">参加する</button>
     </form>
-    <div class="login-switch">登録済みの人は <button type="button" class="linklike" data-action="show-login">ログイン</button></div>`);
+    <p class="muted" style="font-size:12px;line-height:1.6;margin-top:14px">参加はこの端末・このブラウザだけで有効です。機種を変えたときは、もう一度招待リンクから参加してください。</p>`);
 }
 
 function renderJoin(message = '') {
   showAuthScreen(`
     <div class="login-brand"><img src="icons/icon.svg" alt=""><div><strong>車両管理</strong><small>招待コードを入力</small></div></div>
-    <p style="margin:4px 0 14px;line-height:1.7">${esc(store.auth()?.userEmail() || '')} でログインしています。会社のデータを見るには、管理者から受け取った招待コードを入れてください。</p>
+    <p style="margin:4px 0 14px;line-height:1.7">${esc(store.auth()?.displayName() || '')} でログインしていますが、メンバーではありません。管理者から新しい招待リンクをもらって開くか、招待コードを入れてください。</p>
     ${message ? `<div class="form-errors" style="margin-bottom:12px"><ul><li>${esc(message)}</li></ul></div>` : ''}
     <form id="join-form" class="stack">
       <div class="field required"><label for="join-code">招待コード</label><input type="text" id="join-code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" required></div>
@@ -1617,12 +1635,28 @@ function renderFatal(err) {
     <button class="btn primary" type="button" data-action="reload-page" style="justify-content:center;margin-top:14px">もう一度試す</button>`);
 }
 
+// URL の ?invite=コード(招待リンク)。参加し終わったら URL から消す
+let pendingInvite = new URLSearchParams(location.search).get('invite') || '';
+function clearInvite() {
+  if (!pendingInvite) return;
+  pendingInvite = '';
+  history.replaceState(null, '', location.pathname + location.hash);
+}
+
+// ログイン状態に合わせて、ログイン・招待・参加の画面を出す。出したら true
+function routeAuth(status) {
+  if (status === 'offline') { renderOffline(); return true; }
+  if (status === 'ready') { clearInvite(); return false; }
+  if (store.mode() === 'cloud' && pendingInvite && (status === 'needs-auth' || status === 'needs-join')) { renderInvite(pendingInvite); return true; }
+  if (status === 'needs-join') { renderJoin(); return true; }
+  if (status === 'needs-auth') { renderLogin(); return true; }
+  return false;
+}
+
 async function enterApp() {
   ready = false;
   const status = await store.reload();
-  if (status === 'offline') return renderOffline();
-  if (status === 'needs-join') return renderJoin();
-  if (status === 'needs-auth') return renderLogin();
+  if (routeAuth(status)) return;
   await photos.init(store.cloudClient(), L.collectPhotoIds(store.getState()));
   document.body.classList.remove('auth');
   updateFooter();
@@ -1656,13 +1690,11 @@ async function boot() {
     const status = await store.init();
     if (store.mode() === 'cloud') {
       store.auth().onChange((event) => {
-        if (event === 'SIGNED_OUT') { ready = false; renderLogin(); }
+        if (event === 'SIGNED_OUT') { ready = false; if (pendingInvite) renderInvite(pendingInvite); else renderLogin(); }
         else if (event === 'PASSWORD_RECOVERY') openPasswordDialog(true);
       });
     }
-    if (status === 'needs-auth') return renderLogin();
-    if (status === 'needs-join') return renderJoin();
-    if (status === 'offline') return renderOffline();
+    if (routeAuth(status)) return;
     await photos.init(store.cloudClient(), L.collectPhotoIds(store.getState()));
     document.body.classList.remove('auth');
     updateFooter();
@@ -1675,7 +1707,7 @@ async function boot() {
 
 document.addEventListener('submit', async (e) => {
   const form = e.target;
-  if (!['login-form', 'signup-form', 'join-form'].includes(form.id)) return;
+  if (!['login-form', 'invite-form', 'join-form'].includes(form.id)) return;
   e.preventDefault();
   const btn = form.querySelector('button[type=submit]');
   const box = form.querySelector('.form-errors');
@@ -1687,16 +1719,9 @@ document.addEventListener('submit', async (e) => {
     if (form.id === 'login-form') {
       await store.auth().signIn(v('email'), String(fd.get('password')));
       await enterApp();
-    } else if (form.id === 'signup-form') {
-      let r;
-      try {
-        r = await store.auth().signUp(v('email'), String(fd.get('password')), v('code'));
-      } catch (err) {
-        // アカウントは出来たがコードが違った → ログイン済みなので「招待コードを入力」へ
-        if (store.auth().userId()) { renderJoin(err.message); return; }
-        throw err;
-      }
-      if (r === 'confirm-email') { renderLogin('確認メールを送りました。メールのリンクを開いてから、ここでログインして招待コードを入れてください'); return; }
+    } else if (form.id === 'invite-form') {
+      await store.auth().joinWithInvite(v('code'), v('name'));
+      clearInvite();
       await enterApp();
     } else {
       await store.auth().join(v('code'));

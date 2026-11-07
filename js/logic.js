@@ -628,6 +628,7 @@ export function jaAuthError(error) {
     ['Signups not allowed', '新しい利用者は管理者が追加します'],
     ['JWT expired', 'ログインの期限が切れました。もう一度ログインしてください'],
     ['row-level security', 'この操作をする権限がありません'],
+    ['Anonymous sign-ins are disabled', '招待リンクでの参加がまだ使えません。管理者に Supabase の設定(匿名ログイン)を ON にしてもらってください'],
   ];
   for (const [en, ja] of table) if (msg.toLowerCase().includes(en.toLowerCase())) return new Error(ja);
   return new Error(msg);
