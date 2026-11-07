@@ -9,8 +9,13 @@ const TABLES = ['vehicles', 'records', 'issues'];
 const PAGE = 1000;
 
 export async function createSupabaseBackend(url, anonKey) {
-  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-  const sb = createClient(url, anonKey);
+  // 版は固定する(@2 だと新しい版が出るたびに中身が変わる。2.119.0 で Safari の起動が止まった)
+  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm');
+  // lock: ブラウザのタブ間ロック(navigator.locks)を使わない。Safari で古いタブがロックを持ったままになり、
+  // getSession() が返らず「読み込み中…」で止まることがあるため。1 社の小さなアプリなので、タブ内の順番だけ守れば十分
+  let chain = Promise.resolve();
+  const lock = (_name, _timeout, fn) => { const run = chain.then(fn, fn); chain = run.catch(() => {}); return run; };
+  const sb = createClient(url, anonKey, { auth: { lock } });
   let user = null;
   let channel = null; // Realtime の購読(ログアウト → 再ログインで二重にならないよう 1 本だけ持つ)
 

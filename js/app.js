@@ -1685,9 +1685,14 @@ function openPasswordDialog(forced = false) {
   });
 }
 
+// 起動が終わらないとき(通信が止まった等)に「読み込み中…」のままにしない
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('起動に時間がかかっています。もう一度試すか、このサイトの他のタブを閉じてから開き直してください')), ms))]);
+}
+
 async function boot() {
   try {
-    const status = await store.init();
+    const status = await withTimeout(store.init(), 20000);
     if (store.mode() === 'cloud') {
       store.auth().onChange((event) => {
         if (event === 'SIGNED_OUT') { ready = false; if (pendingInvite) renderInvite(pendingInvite); else renderLogin(); }
