@@ -15,7 +15,7 @@
 ## 続きを始めるとき
 - まず docs/進捗.md を読む(いまの状態、やりかけの作業、次の候補)
 - 本人向けの使い方は docs/運用手順.md(1〜6 ローカル版、7 共有版)。画面の文言を変えたらここも合わせる
-- 車体の図の元は reference/(図面 4 枚)。img/ は tools/clean_blueprints.py で生成
+- 車体の図は img/ を使う。元の図面 4 枚(reference/every-*.jpg)は 2026-11-07 に削除し、git 履歴(e6724b2 の 1 つ前)にある。作り直すときは `git checkout e6724b2~1 -- reference/` で戻してから tools/clean_blueprints.py を流す
 
 ## 確認の仕方
 - `python3 -m http.server 8080` で開き、設定 → サンプルデータを入れて全画面を目で見る
